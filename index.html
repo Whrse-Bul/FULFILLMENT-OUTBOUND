@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WHSE Fulfillment-Outbound Tracker</title>
+<title>WHSE Fulfillment Tracker V73</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* V73 Palette + Google Sans + Outbound compact aligned load row */
@@ -167,7 +167,7 @@ tr.ob-match td{background:var(--grn-d);}
 @media(max-width:1100px){.ob-load-row{grid-template-columns:1fr 1fr;}.ob-load-row .btn-load{width:100%;}}
 @media(max-width:700px){.ob-load-row{grid-template-columns:1fr;}}
 /* V74: Outbound title + DR load controls in one horizontal header row */
-.ob-verify-head{display:grid;grid-template-columns:minmax(220px,28%) 1fr;gap:16px;align-items:start;margin-bottom:12px;}
+.ob-verify-head{display:grid;grid-template-columns:minmax(220px,28%) 1fr;gap:16px;align-items:start;margin-bottom:12px;position:sticky;top:48px;z-index:40;background:var(--bg);padding:8px 0;border-bottom:1px solid rgba(194,216,202,.55);}
 .ob-title-block{padding-top:4px;}
 .ob-title-block .page-title,.ob-title-block .page-sub{margin-left:0;margin-right:0;}
 .ob-load-panel{background:var(--sur);border:1px solid var(--bdr);border-radius:12px;padding:10px 12px;box-shadow:0 8px 24px rgba(67,112,86,.08);}
@@ -1082,8 +1082,8 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
 </div>
 
 <script>
-const APP_VERSION="V90_GITHUB_PAGES_LIVE_PIVOT_NULL_FIX";
-console.log("WHSE Fulfillment-Outbound Tracker", APP_VERSION);
+const APP_VERSION="V91_GITHUB_PAGES_LIVE_DR_SEARCH_BOX_FILTER";
+console.log("WHSE Fulfillment Tracker", APP_VERSION);
 
 
 // ── GITHUB PAGES LIVE CONNECTION ──────────────────────────
@@ -2771,7 +2771,6 @@ function loadPickStatus(){
     pickSelectedLineV86=null;
     pickBoxesV86=[];
     renderPickStatusV85();
-    prefetchPickingBoxesForDRV87();
     setTimeout(()=>document.getElementById('pick-qr-input')?.focus(),50);
   }).withFailureHandler(e=>showPickMsg((e&&e.message)||e,'error')).getPickingDRStatusV85(store,drNo);
 }
@@ -2806,7 +2805,7 @@ function applyPickBoxListV87(boxes){
   if(meta)meta.textContent='';
   if(!boxSel)return;
   if(allPickingBoxesLoadingV88&&!pickBoxesV86.length){boxSel.innerHTML='<option value="">Loading boxes...</option>';return;}
-  if(!pickBoxesV86.length){boxSel.innerHTML='<option value="">No available boxes loaded</option>';return;}
+  if(!pickBoxesV86.length){boxSel.innerHTML='<option value="">No available boxes for this SKU</option>';return;}
   boxSel.innerHTML='<option value="">Select box...</option>'+pickBoxesV86.map(b=>`<option value="${b.boxNo}">${b.boxNo}</option>`).join('');
 }
 
@@ -2861,12 +2860,19 @@ function selectPickLineV86(idx){
   const boxSel=document.getElementById('pick-box-no');
   const meta=document.getElementById('pick-box-meta');
   if(meta)meta.textContent='';
-  if(allPickingBoxesLoadedV88){
-    applyPickBoxListV87(allPickingBoxesV88);
-  }else{
-    if(boxSel)boxSel.innerHTML='<option value="">Loading boxes...</option>';
-    loadAllPickingBoxesV88(false);
-  }
+  if(!pickSelectedLineV86){return;}
+  if(boxSel)boxSel.innerHTML='<option value="">Loading boxes for this SKU...</option>';
+  google.script.run.withSuccessHandler(res=>{
+    if(!res||res.error){
+      if(boxSel)boxSel.innerHTML='<option value="">No boxes loaded</option>';
+      showPickMsg((res&&res.error)||'Failed to load boxes for this SKU.','error');
+      return;
+    }
+    applyPickBoxListV87(res.boxes||[]);
+  }).withFailureHandler(e=>{
+    if(boxSel)boxSel.innerHTML='<option value="">No boxes loaded</option>';
+    showPickMsg((e&&e.message)||e,'error');
+  }).getPickingBoxesForItemV86(pickSelectedLineV86.barcode);
 }
 function onPickBoxChangeV86(){
   const boxNo=document.getElementById('pick-box-no')?.value||'';
@@ -2989,6 +2995,8 @@ function toggleOBQrCard(forceCollapse){
   const body=document.getElementById('ob-qr-card-body');
   const chevron=document.getElementById('ob-qr-card-chevron');
   if(!body)return;
+  // V91: search/load toolbar should always remain viewable.
+  if(forceCollapse===true){forceCollapse=false;}
   const collapsed=forceCollapse===true?true:(forceCollapse===false?false:body.style.display!=='none');
   body.style.display=collapsed?'none':'block';
   if(chevron) chevron.textContent=collapsed?'▼ Expand':'▲ Collapse';
@@ -3008,7 +3016,8 @@ function loadOBStatus(drNoOverride){
   document.getElementById('ob-content').style.display='block';
   document.getElementById('ob-body').innerHTML='<tr><td colspan="9" class="loading">Loading...</td></tr>';
   renderOBBatchTable();
-  refreshOBBaseline(true);
+  document.getElementById('ob-qr-card-body')?.style && (document.getElementById('ob-qr-card-body').style.display='block');
+  refreshOBBaseline(false);
 }
 
 // Re-fetches getDrOutboundStatus for the currently-loaded DR and re-renders
@@ -3033,7 +3042,8 @@ function refreshOBBaseline(collapseQrCard){
       document.getElementById('ob-date-lbl').textContent=fmtDisplayDate(status.dispatchDate);
       syncOBSelectors(status.store,status.drNo);
       renderOBLiveTable();
-      if(collapseQrCard) toggleOBQrCard(true);
+      // V91: keep DR search/load bar visible after loading.
+      toggleOBQrCard(false);
       const scanInput=document.getElementById('ob-scan-input');
       if(scanInput) scanInput.focus();
     })
