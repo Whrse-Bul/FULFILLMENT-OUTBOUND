@@ -1082,8 +1082,77 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
 </div>
 
 <script>
-const APP_VERSION="V47_20260623_OUTBOUND_PALETTE_FONT";
+const APP_VERSION="V89_GITHUB_PAGES_LIVE_API";
 console.log("WHSE Fulfillment Tracker", APP_VERSION);
+
+
+// ── GITHUB PAGES LIVE CONNECTION ──────────────────────────
+// 1) Deploy Code.gs as Google Apps Script Web App.
+// 2) Copy the /exec deployment URL.
+// 3) Paste it below, then upload this Index.html to GitHub Pages.
+// Example: const GAS_URL = "https://script.google.com/macros/s/AKfycbxxxx/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyVO2JArMJpbkfZSOBamsgA6q3IqnmVf9OME0-tUreOgrCDPnaF_F9vXksNSjY2XEjx/exec";
+
+(function setupGitHubPagesGasBridge(){
+  // When opened from Apps Script, the native google.script.run exists; use it.
+  if (window.google && google.script && google.script.run) return;
+
+  const isConfigured = GAS_URL && !/^PASTE_/i.test(GAS_URL);
+  let successHandler = null;
+  let failureHandler = null;
+
+  function resetHandlers(){
+    successHandler = null;
+    failureHandler = null;
+  }
+
+  async function callGasFunction(fnName, args){
+    if (!isConfigured) {
+      throw new Error('GAS_URL is not configured. Paste your Apps Script /exec URL in Index.html.');
+    }
+
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      redirect: 'follow',
+      // text/plain avoids CORS preflight and is accepted by Apps Script doPost(e).
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ fn: fnName, args: args || [] })
+    });
+
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); }
+    catch (err) { throw new Error('Invalid Apps Script response. Check deployment access and GAS_URL. Response: ' + text.slice(0, 160)); }
+
+    if (!json.ok) throw new Error(json.error || 'Apps Script API error.');
+    return json.data;
+  }
+
+  const runner = new Proxy({}, {
+    get(target, prop){
+      if (prop === 'withSuccessHandler') {
+        return function(fn){ successHandler = fn; return runner; };
+      }
+      if (prop === 'withFailureHandler') {
+        return function(fn){ failureHandler = fn; return runner; };
+      }
+      return function(...args){
+        const ok = successHandler;
+        const fail = failureHandler;
+        resetHandlers();
+        callGasFunction(String(prop), args)
+          .then(data => { if (typeof ok === 'function') ok(data); })
+          .catch(err => {
+            console.error('GAS API failed:', prop, err);
+            if (typeof fail === 'function') fail(err);
+            else alert('Connection error: ' + (err && err.message ? err.message : err));
+          });
+      };
+    }
+  });
+
+  window.google = { script: { run: runner } };
+})();
 // ── STATE ──────────────────────────────────────────────────
 let USER=null, allInv=[], pivot=null;
 let locData={stores:[],reqBy:[],reasons:[]}, plItems=[], calOffset=0;
