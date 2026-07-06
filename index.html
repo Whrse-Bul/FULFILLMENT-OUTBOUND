@@ -1082,7 +1082,7 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
 </div>
 
 <script>
-const APP_VERSION="V89_GITHUB_PAGES_LIVE_API";
+const APP_VERSION="V90_GITHUB_PAGES_LIVE_PIVOT_NULL_FIX";
 console.log("WHSE Fulfillment Tracker", APP_VERSION);
 
 
@@ -1975,14 +1975,17 @@ function renderCal(){
 
 function renderUnscheduled(){
   if(!pivot)return;
+  const listEl=document.getElementById('unsched-list');
+  const countEl=document.getElementById('unsched-ct');
+  if(!listEl||!countEl)return;
   const items=pivot.unscheduled||[];
   const isAdmin=USER&&USER.role==='Warehouse Admin';
-  document.getElementById('unsched-ct').textContent=`${items.length} store${items.length===1?'':'s'} · ${items.reduce((s,r)=>s+r.totalRqstd,0).toLocaleString()} units waiting`;
+  countEl.textContent=`${items.length} store${items.length===1?'':'s'} · ${items.reduce((s,r)=>s+r.totalRqstd,0).toLocaleString()} units waiting`;
   if(!items.length){
-    document.getElementById('unsched-list').innerHTML='<div style="font-size:13px;color:var(--grn);padding:8px 0;">✓ All stores have dispatch dates assigned.</div>';
+    listEl.innerHTML='<div style="font-size:13px;color:var(--grn);padding:8px 0;">✓ All stores have dispatch dates assigned.</div>';
     return;
   }
-  document.getElementById('unsched-list').innerHTML=items.map(item=>`
+  listEl.innerHTML=items.map(item=>`
     <div class="unsched-row">
       <div class="unsched-store">${item.store}</div>
       <div class="unsched-stats">
@@ -2020,6 +2023,7 @@ function populateCalStoreFilter(){
   if(!pivot)return;
   const stores=[...new Set((pivot.scheduled||[]).map(r=>r.store).filter(Boolean))].sort();
   const sel=document.getElementById('cal-store-filter');
+  if(!sel)return;
   sel.innerHTML='<option value="">All stores</option>';
   stores.forEach(s=>sel.innerHTML+=`<option>${s}</option>`);
 }
@@ -2502,6 +2506,9 @@ function doSubmit(){
 // ── MODULE 4 ───────────────────────────────────────────────
 function populateM4Stores(){
   const sel=document.getElementById('m4-store');
+  // GitHub-live version may not include the old M4 picklist dropdown.
+  // Do not stop PIVOT DASHBOARD/calendar loading when this optional element is absent.
+  if(!sel)return;
   sel.innerHTML='<option value="">Select store...</option>';
   Object.keys(m4DrMap).sort().forEach(s=>sel.innerHTML+=`<option>${s}</option>`);
 }
