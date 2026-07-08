@@ -290,11 +290,11 @@ tr.ob-match td{background:var(--grn-d);}
   .print-tbl tbody tr:nth-child(even) td{background:#f3f5f4!important;}
   .print-tbl tbody tr:nth-child(odd) td{background:#ffffff!important;}
   .print-tbl .col-no{width:4%;}
-  .print-tbl .col-rack{width:12%;}
-  .print-tbl .col-reason{width:13%;}
-  .print-tbl .col-barcode{width:14%;}
+  .print-tbl .col-rack{width:15%;}
+  .print-tbl .col-reason{width:12%;}
+  .print-tbl .col-barcode{width:13%;}
   .print-tbl .col-item{width:22%;}
-  .print-tbl .col-color{width:13%;}
+  .print-tbl .col-color{width:12%;}
   .print-tbl .col-size{width:5%;}
   .print-tbl .col-qty{width:5%;}
   .print-tbl .col-box{width:12%;}
@@ -979,7 +979,7 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
               <div class="card-head"><span class="card-title">Scan a box</span></div>
               <div class="row2">
                 <div class="fg"><label>Scanned by</label><input type="text" id="ob-scanner" placeholder="Name"></div>
-                <div class="fg"><label>Dispatch Box No.</label><div style="display:flex;gap:8px;"><input type="number" id="ob-box" placeholder="1" min="1" step="1" inputmode="numeric" pattern="[0-9]*"><button type="button" class="btn-clear" style="white-space:nowrap;" onclick="openStockTransferModal()">Stock Transfer</button></div><div class="box-number-hint"> </div></div>
+                <div class="fg"><label>Dispatch Box No.</label><div style="display:flex;gap:8px;flex-wrap:wrap;"><input type="number" id="ob-box" placeholder="1" min="1" step="1" inputmode="numeric" pattern="[0-9]*" style="min-width:90px;flex:1;"><button type="button" class="btn-clear" style="white-space:nowrap;" onclick="openStockTransferModal()">Stock Transfer</button><button type="button" class="btn-clear" style="white-space:nowrap;" onclick="openVmMaterialModal()">VM Material</button></div><div class="box-number-hint">Number only for regular boxes. VM Material can be saved as LOOSE.</div></div>
               </div>
               <div class="fg">
                 <div style="display:flex;justify-content:space-between;align-items:baseline;">
@@ -1089,7 +1089,7 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
 </div>
 
 <script>
-const APP_VERSION="V91_GITHUB_PAGES_LIVE_DR_SEARCH_BOX_FILTER";
+const APP_VERSION="V94_GITHUB_PAGES_LIVE_VM_OUTBOUND";
 console.log("WHSE Fulfillment Tracker", APP_VERSION);
 
 
@@ -2493,7 +2493,7 @@ function printUnscheduledPicklist(){
   const totalQty=d.rows.reduce((s,r)=>s+Number(r.qtyRqstd||0),0);
   const drPrintNo=getCurrentUnscheduledDrNo()||d.nextDrNo||'UNASSIGNED DR';
   const printDate=new Date().toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'});
-  const sorted=[...d.rows].sort((a,b)=>(a.rackLocation||'ZZZ').localeCompare(b.rackLocation||'ZZZ') || String(a.barcode||'').localeCompare(String(b.barcode||'')));
+  const sorted=[...d.rows].sort((a,b)=>String(a.itemName||'').localeCompare(String(b.itemName||''),undefined,{numeric:true,sensitivity:'base'}) || String(a.barcode||'').localeCompare(String(b.barcode||''),undefined,{numeric:true,sensitivity:'base'}) || String(a.rackLocation||'').localeCompare(String(b.rackLocation||''),undefined,{numeric:true,sensitivity:'base'}));
   const area=document.getElementById('print-area');
   area.innerHTML=buildPicklistPrintPages_({
     rows:sorted,
@@ -2725,7 +2725,7 @@ function printPicklist(){
     return st!=='COMPLETE';
   });
   if(!rows.length){alert('No pending items to print.');return;}
-  const sorted=[...rows].sort((a,b)=>(a.rackLocation||'ZZZ').localeCompare(b.rackLocation||'ZZZ') || String(a.barcode||'').localeCompare(String(b.barcode||'')));
+  const sorted=[...rows].sort((a,b)=>String(a.itemName||'').localeCompare(String(b.itemName||''),undefined,{numeric:true,sensitivity:'base'}) || String(a.barcode||'').localeCompare(String(b.barcode||''),undefined,{numeric:true,sensitivity:'base'}) || String(a.rackLocation||'').localeCompare(String(b.rackLocation||''),undefined,{numeric:true,sensitivity:'base'}));
   const store=document.getElementById('m4-store-lbl').textContent||'';
   const drNo=document.getElementById('m4-dr-lbl').textContent||'';
   const date=document.getElementById('m4-date-lbl').textContent||'';
@@ -3419,6 +3419,103 @@ function addStockTransferItem(filteredIndex){
   addStockTransferRowObject(stockTransferFiltered[filteredIndex],false);
 }
 
+function openVmMaterialModal(){
+  if(!obDrNo){alert('Load a DR first before adding VM Material.');return;}
+  const modalBox=document.querySelector('#modal .modal');
+  if(modalBox) modalBox.classList.add('modal-lg');
+  const suggestedBox=(document.getElementById('ob-box')?.value||'').trim();
+  const scanner=(document.getElementById('ob-scanner')?.value||'').trim();
+  document.getElementById('modal-title').textContent='VM Material Encoding';
+  document.getElementById('modal-body').innerHTML=`
+    <div class="row2">
+      <div class="fg"><label>VM type</label><select id="vm-type" onchange="toggleVmBarcodeMode()"><option>With Barcode</option><option selected>No Barcode</option></select></div>
+      <div class="fg"><label>Encoded by</label><input id="vm-encoded-by" placeholder="Name" value="${scanner.replace(/"/g,'&quot;')}"></div>
+    </div>
+    <div class="row2">
+      <div class="fg"><label>Barcode <span style="font-weight:500;color:var(--txt3);">optional if no barcode</span></label><div style="display:flex;gap:8px;"><input id="vm-barcode" placeholder="Scan/type VM barcode if available"><button type="button" class="btn-clear" onclick="lookupVmBarcode()">Lookup</button></div></div>
+      <div class="fg"><label>Qty</label><input id="vm-qty" type="number" min="1" step="1" value="1"></div>
+    </div>
+    <div class="fg"><label>Item Name <span style="color:var(--red);">*</span></label><input id="vm-item-name" placeholder="Example: Window Poster / Acrylic Standee / VM Cards"></div>
+    <div class="fg"><label>Description</label><input id="vm-description" placeholder="Optional details"></div>
+    <div class="row2">
+      <div class="fg"><label>Color</label><input id="vm-color" placeholder="Optional"></div>
+      <div class="fg"><label>Size</label><input id="vm-size" placeholder="Optional"></div>
+    </div>
+    <div class="row2">
+      <div class="fg"><label>Dispatch Box No. <span style="font-weight:500;color:var(--txt3);">optional</span></label><input id="vm-box-no" type="number" min="1" step="1" inputmode="numeric" placeholder="Blank = LOOSE" value="${suggestedBox.replace(/"/g,'&quot;')}"></div>
+      <div class="fg"><label>Packing type</label><input id="vm-packing-preview" value="${suggestedBox?'Inside Box':'Loose Item'}" disabled></div>
+    </div>
+    <div class="fg"><label>Remarks</label><input id="vm-remarks" placeholder="Optional"></div>
+    <p id="vm-save-msg" class="ob-scan-msg" style="display:block;background:#f8fafc;color:var(--txt2);border:1px solid var(--bdr);">VM Material will be included in DR PDF / manifest, but will not affect picked-vs-scanned variance.</p>`;
+  const boxEl=()=>document.getElementById('vm-box-no');
+  setTimeout(()=>{
+    const bx=boxEl();
+    if(bx) bx.addEventListener('input',()=>{const pv=document.getElementById('vm-packing-preview'); if(pv) pv.value=bx.value.trim()?'Inside Box':'Loose Item';});
+    const name=document.getElementById('vm-item-name'); if(name) name.focus();
+  },50);
+  const okBtn=document.getElementById('modal-ok');
+  okBtn.textContent='Save VM';
+  okBtn.onclick=saveVmMaterialFromModal;
+  document.getElementById('modal').classList.add('open');
+}
+
+function toggleVmBarcodeMode(){
+  const type=(document.getElementById('vm-type')?.value||'').toLowerCase();
+  const bc=document.getElementById('vm-barcode');
+  if(bc) bc.placeholder=type.includes('with')?'Scan/type VM barcode':'Optional - auto code will be generated if blank';
+}
+
+function lookupVmBarcode(){
+  const bc=(document.getElementById('vm-barcode')?.value||'').trim();
+  const msg=document.getElementById('vm-save-msg');
+  if(!bc){if(msg)msg.textContent='Type or scan a barcode first.';return;}
+  if(msg)msg.textContent='Looking up barcode...';
+  google.script.run.withSuccessHandler(res=>{
+    const item=(Array.isArray(res)?res[0]:null)||{};
+    if(!item || item.itemName==='NOT FOUND'){
+      if(msg)msg.textContent='Barcode not found in MASTERLIST. You can still manually encode the VM details.';
+      return;
+    }
+    document.getElementById('vm-item-name').value=item.itemName||'';
+    document.getElementById('vm-color').value=item.color||'';
+    document.getElementById('vm-size').value=item.size||'';
+    if(msg)msg.textContent='Barcode found. Please confirm qty and details before saving.';
+  }).withFailureHandler(e=>{if(msg)msg.textContent='Lookup failed: '+((e&&e.message)||e);}).lookupBarcodes([bc]);
+}
+
+function saveVmMaterialFromModal(){
+  if(!obDrNo){alert('Load a DR first.');return;}
+  const payload={
+    drNo:obDrNo,
+    vmType:(document.getElementById('vm-type')?.value||'No Barcode').trim(),
+    encodedBy:(document.getElementById('vm-encoded-by')?.value||'').trim(),
+    barcode:(document.getElementById('vm-barcode')?.value||'').trim(),
+    itemName:(document.getElementById('vm-item-name')?.value||'').trim(),
+    description:(document.getElementById('vm-description')?.value||'').trim(),
+    color:(document.getElementById('vm-color')?.value||'').trim(),
+    size:(document.getElementById('vm-size')?.value||'').trim(),
+    qty:Number(document.getElementById('vm-qty')?.value||0),
+    boxNo:(document.getElementById('vm-box-no')?.value||'').trim(),
+    remarks:(document.getElementById('vm-remarks')?.value||'').trim()
+  };
+  const msg=document.getElementById('vm-save-msg');
+  if(!payload.itemName){if(msg)msg.textContent='Item Name is required.';return;}
+  if(!payload.qty || payload.qty<=0){if(msg)msg.textContent='Qty must be greater than 0.';return;}
+  const okBtn=document.getElementById('modal-ok');
+  okBtn.disabled=true; okBtn.textContent='Saving...';
+  if(msg)msg.textContent='Saving VM Material. Please wait...';
+  google.script.run.withSuccessHandler(res=>{
+    okBtn.disabled=false; okBtn.textContent='Save VM';
+    if(!res || !res.success){if(msg)msg.textContent=(res&&res.msg)||'Failed to save VM Material.';return;}
+    document.getElementById('modal').classList.remove('open');
+    showOBScanMsg('✅ '+(res.msg||'VM Material saved.'));
+    refreshOBBaseline(false);
+  }).withFailureHandler(e=>{
+    okBtn.disabled=false; okBtn.textContent='Save VM';
+    if(msg)msg.textContent='Save error: '+((e&&e.message)||e);
+  }).logOutboundVmMaterialV94(payload);
+}
+
 function renderOBBatchTable(){
   const tbody=document.getElementById('ob-batch-body');
   const badge=document.getElementById('ob-batch-total-badge');
@@ -3435,7 +3532,7 @@ function renderOBBatchTable(){
     const esc=b.replace(/'/g,"\\'");
     return `<tr>
       <td class="mono">${it.barcode}</td>
-      <td style="font-weight:500;${notFound?'color:var(--red);font-style:italic;':''}">${it.itemName}${it.source==='Stock Transfer'?' <span class="pill p-blue" style="font-size:9px;margin-left:5px;">Stock Transfer</span>':''}</td>
+      <td style="font-weight:500;${notFound?'color:var(--red);font-style:italic;':''}">${it.itemName}${it.source==='Stock Transfer'?' <span class="pill p-blue" style="font-size:9px;margin-left:5px;">Stock Transfer</span>':(it.source==='VM MATERIAL'?' <span class="pill p-blue" style="font-size:9px;margin-left:5px;">VM MATERIAL</span>':'')}</td>
       <td>${it.color||'—'}</td><td>${it.size||'—'}</td>
       <td class="num"><input type="number" min="0" value="${it.qty}" style="width:55px;padding:4px 6px;border:1px solid var(--bdr);border-radius:6px;text-align:center;" onchange="setOBScanQty('${esc}', this.value)"></td>
       <td><button class="del-row" onclick="removeOBScan('${esc}')" title="Delete row">🗑</button></td>
