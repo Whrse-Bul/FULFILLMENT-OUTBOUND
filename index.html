@@ -546,6 +546,9 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
 .pick-box-meta{font-size:11px;color:var(--txt2);margin-top:4px;}
 @media(max-width:1100px){.pick-v86-layout{grid-template-columns:1fr;}.pick-v86-form{order:-1;}}
 
+
+.ob-error-flash{animation:obErrFlash .45s ease-in-out 0s 3;}
+@keyframes obErrFlash{0%,100%{box-shadow:none;border-color:var(--bdr);}50%{box-shadow:0 0 0 4px rgba(122,34,40,.20);border-color:#7a2228;background:#fff3f4;}}
 </style>
 </head>
 <body>
@@ -949,7 +952,7 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
               </div>
               <div class="m4-fg"><label>Store</label><select id="ob-store" onchange="loadOBDRs()"><option value="">Select store...</option></select></div>
               <div class="m4-fg"><label>DR number</label><select id="ob-dr"><option value="">Select DR...</option></select></div>
-              <div><button class="btn-load" onclick="loadOBStatus()">Load DR</button></div>
+              <div style="display:flex;gap:8px;align-items:end;"><button class="btn-load" onclick="loadOBStatus()">Load DR</button><button class="btn-clear" onclick="clearOBDrSelection()" style="height:40px;white-space:nowrap;">Clear</button></div>
             </div>
             <div class="ob-load-help">Scan a DR tracking QR code, or select a store and DR manually.</div>
           </div>
@@ -969,7 +972,7 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
             <div class="dib"><strong id="ob-total-scanned-lbl">—</strong>Total Qty Scanned</div>
             <div class="dib"><strong id="ob-total-boxes-lbl">—</strong>Total Boxes Generated</div>
           </div>
-          <button class="btn-print" id="ob-generate-btn" onclick="generateDR()" disabled>🧾 Generate DR PDF</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"><button class="btn-print" id="ob-label-btn" onclick="generateBoxLabels()" disabled>🏷 Print Box Label</button><button class="btn-print" id="ob-generate-btn" onclick="generateDR()" disabled>🧾 Generate DR PDF</button></div>
         </div>
 
         <div class="ob-layout">
@@ -996,8 +999,8 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
                 <tbody id="ob-batch-body"><tr><td colspan="6" class="empty">No items scanned yet for this box.</td></tr></tbody>
               </table></div>
               <div style="display:flex;gap:8px;margin-top:10px;">
-                <button class="btn-clear" onclick="undoLastOBScan()" title="Undo the most recent scan">↩ Undo last</button>
-                <button class="btn-clear" onclick="clearOBBatch()">Clear box</button>
+                <button class="btn-clear" id="ob-undo-btn" onclick="undoLastOBScan()" title="Undo the most recent scan">↩ Undo last</button>
+                <button class="btn-clear" id="ob-clear-box-btn" onclick="clearOBBatch()">Clear box</button>
                 <button class="btn-submit" style="flex:1;" id="ob-generate-box-btn" onclick="generateOBBox()">📦 Generate Box</button>
               </div>
             </div>
@@ -1089,7 +1092,7 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
 </div>
 
 <script>
-const APP_VERSION="V94_GITHUB_PAGES_LIVE_VM_OUTBOUND";
+const APP_VERSION="V98_GITHUB_LIVE_LABEL_SOUND";
 console.log("WHSE Fulfillment Tracker", APP_VERSION);
 
 
@@ -3175,6 +3178,8 @@ function renderOBLiveTable(){
     scannedLbl.title=`Not ready — ${pickedLines.filter(l=>l.variance!==0).length + unexpectedScans.length} eligible line(s) mismatched`;
   }
   document.getElementById('ob-generate-btn').disabled=!serverAllMatched;
+  const labelBtn=document.getElementById('ob-label-btn');
+  if(labelBtn) labelBtn.disabled=boxesGenerated<=0;
 
   document.getElementById('ob-body').innerHTML=lines.length?lines.map(l=>{
     const isPickedLine=Number(l.qtyPicked||0)>0;
@@ -3200,10 +3205,39 @@ function renderOBLiveTable(){
   }).join(''):'<tr><td colspan="9" class="empty">No picked lines found for this DR yet.</td></tr>';
 }
 
-function showOBScanMsg(msg){
+function playOBErrorSound(){
+  try{
+    const AudioCtx=window.AudioContext||window.webkitAudioContext;
+    if(!AudioCtx)return;
+    const ctx=new AudioCtx();
+    const now=ctx.currentTime;
+    [0,.16,.32].forEach((offset)=>{
+      const osc=ctx.createOscillator();
+      const gain=ctx.createGain();
+      osc.type='square';
+      osc.frequency.setValueAtTime(880,now+offset);
+      gain.gain.setValueAtTime(0.0001,now+offset);
+      gain.gain.exponentialRampToValueAtTime(0.55,now+offset+0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001,now+offset+0.12);
+      osc.connect(gain);gain.connect(ctx.destination);
+      osc.start(now+offset);osc.stop(now+offset+0.13);
+    });
+    setTimeout(()=>ctx.close&&ctx.close(),900);
+  }catch(e){}
+}
+function flashOBScanInput(){
+  const input=document.getElementById('ob-scan-input');
+  if(!input)return;
+  input.classList.remove('ob-error-flash');
+  void input.offsetWidth;
+  input.classList.add('ob-error-flash');
+  setTimeout(()=>input.classList.remove('ob-error-flash'),1600);
+}
+function showOBScanMsg(msg, silent){
   const el=document.getElementById('ob-scan-msg');
   el.textContent=msg;
   el.style.display='block';
+  if(!silent){ playOBErrorSound(); flashOBScanInput(); }
 }
 function hideOBScanMsg(){
   const el=document.getElementById('ob-scan-msg');
@@ -3493,7 +3527,7 @@ function saveVmMaterialFromModal(){
     okBtn.disabled=false; okBtn.textContent='Save VM';
     if(!res || !res.success){if(msg)msg.textContent=(res&&res.msg)||'Failed to save VM Material.';return;}
     document.getElementById('modal').classList.remove('open');
-    showOBScanMsg('✅ '+(res.msg||'VM Material saved.'));
+    showOBScanMsg('✅ '+(res.msg||'VM Material saved.'), true);
     refreshOBBaseline(false);
   }).withFailureHandler(e=>{
     okBtn.disabled=false; okBtn.textContent='Save VM';
@@ -3541,6 +3575,36 @@ function isValidBoxNo(boxNo){
   return /^\d+$/.test(s) && Number(s)>0;
 }
 
+
+function clearOBDrSelection(){
+  obDrNo='';
+  obBatch={};
+  obScanHistory=[];
+  obBatchStartMs=null;
+  obBaseline=null;
+  obPickedLookup={};
+  hideOBScanMsg();
+  ['ob-qr-input','ob-scanner','ob-box','ob-scan-input'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const store=document.getElementById('ob-store'); if(store) store.value='';
+  const dr=document.getElementById('ob-dr'); if(dr) dr.innerHTML='<option value="">Select DR...</option>';
+  ['ob-store-lbl','ob-dr-lbl','ob-date-lbl','ob-total-picked-lbl','ob-total-scanned-lbl','ob-total-boxes-lbl'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='—';});
+  const body=document.getElementById('ob-body'); if(body) body.innerHTML='';
+  const empty=document.getElementById('ob-empty'); if(empty) empty.style.display='block';
+  const content=document.getElementById('ob-content'); if(content) content.style.display='none';
+  const pdfBtn=document.getElementById('ob-generate-btn'); if(pdfBtn) pdfBtn.disabled=true;
+  const labelBtn=document.getElementById('ob-label-btn'); if(labelBtn) labelBtn.disabled=true;
+  renderOBBatchTable();
+  const qr=document.getElementById('ob-qr-input'); if(qr) qr.focus();
+}
+
+function setOBGenerateLock(locked){
+  ['ob-scan-input','ob-generate-box-btn','ob-clear-box-btn','ob-undo-btn'].forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=!!locked;});
+  const btn=document.getElementById('ob-generate-box-btn');
+  if(btn) btn.textContent=locked?'Generating box...':'📦 Generate Box';
+  const msg=document.getElementById('ob-scan-msg');
+  if(locked && msg){msg.textContent='Generating box. Please wait...';msg.style.display='block';}
+}
+
 function generateOBBox(){
   if(!obDrNo){alert('Load a DR first.');return;}
   const boxNo=document.getElementById('ob-box').value.trim();
@@ -3565,11 +3629,11 @@ function generateOBBox(){
   }
   const rows=barcodes.map(b=>({barcode:obBatch[b].barcode,itemName:obBatch[b].itemName,color:obBatch[b].color,size:obBatch[b].size,qty:obBatch[b].qty,source:obBatch[b].source||'Store Request',reason:obBatch[b].source==='Stock Transfer'?'Stock Transfer':''}));
   const btn=document.getElementById('ob-generate-box-btn');
-  btn.disabled=true;btn.textContent='Saving...';
+  setOBGenerateLock(true);
   const startTime=new Date(obBatchStartMs||Date.now()).toISOString();
   google.script.run
     .withSuccessHandler(res=>{
-      btn.disabled=false;btn.textContent='📦 Generate Box';
+      setOBGenerateLock(false);
       if(res && res.success){
         // Clear the current box immediately after the server confirms save.
         // Then update the right table first from local data, and refresh again from Google Sheet.
@@ -3595,8 +3659,30 @@ function generateOBBox(){
         alert((res&&res.msg)||'Failed to log scan.');
       }
     })
-    .withFailureHandler(e=>{btn.disabled=false;btn.textContent='📦 Generate Box';alert('Save error: '+(e&&e.message));})
+    .withFailureHandler(e=>{setOBGenerateLock(false);alert('Save error: '+(e&&e.message));})
     .logOutboundScan({drNo:obDrNo,boxNo,scannedBy,store:(obBaseline&&obBaseline.store)||'',startTime,rows});
+}
+
+
+function generateBoxLabels(){
+  if(!obDrNo)return;
+  const btn=document.getElementById('ob-label-btn');
+  btn.disabled=true;btn.textContent='Generating labels...';
+  google.script.run
+    .withSuccessHandler(res=>{
+      btn.textContent='🏷 Print Box Label';
+      if(!res.success){alert(res.msg||'Could not generate box labels.');btn.disabled=false;return;}
+      const byteChars=atob(res.pdfBase64);
+      const bytes=new Uint8Array(byteChars.length);
+      for(let i=0;i<byteChars.length;i++)bytes[i]=byteChars.charCodeAt(i);
+      const blob=new Blob([bytes],{type:'application/pdf'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');a.href=url;a.download=res.fileName;a.click();
+      URL.revokeObjectURL(url);
+      btn.disabled=false;
+    })
+    .withFailureHandler(e=>{btn.disabled=false;btn.textContent='🏷 Print Box Label';alert('Label PDF error: '+(e&&e.message));})
+    .generateDispatchBoxLabelsPdfV98(obDrNo);
 }
 
 function generateDR(){
