@@ -276,13 +276,13 @@ tr.ob-match td{background:var(--grn-d);}
   .print-hdr{display:flex!important;justify-content:space-between!important;align-items:flex-start!important;gap:12px!important;margin-bottom:8px!important;padding-bottom:8px!important;border-bottom:1.5px solid #000!important;break-inside:avoid!important;page-break-inside:avoid!important;}
   .print-hdr-left{display:flex!important;align-items:flex-start!important;gap:10px!important;min-width:0!important;}
   .print-qr{width:72px!important;height:72px!important;object-fit:contain!important;flex:0 0 72px!important;border:1px solid #999!important;padding:2px!important;}
-  .print-hdr-title{font-size:14px!important;font-weight:800!important;letter-spacing:.01em!important;line-height:1.2!important;word-break:break-word!important;}
-  .print-hdr-meta{font-size:11px!important;color:#333!important;margin-top:3px!important;line-height:1.25!important;}
+  .print-hdr-title{font-size:21px!important;font-weight:800!important;letter-spacing:.01em!important;line-height:1.2!important;word-break:break-word!important;}
+  .print-hdr-meta{font-size:14px!important;color:#333!important;margin-top:3px!important;line-height:1.25!important;}
   .print-tbl{width:100%!important;border-collapse:collapse!important;table-layout:auto!important;font-size:11px!important;line-height:1.25!important;page-break-after:auto!important;}
   .print-tbl thead{display:table-header-group!important;}
   .print-tbl tfoot{display:table-footer-group!important;}
   .print-tbl tr{break-inside:avoid!important;page-break-inside:avoid!important;page-break-after:auto!important;}
-  .print-tbl th{background:#f0f0f0!important;padding:4px 5px!important;border:.5px solid #999!important;text-align:center!important;font-size:16.5px!important;font-weight:800!important;vertical-align:middle!important;white-space:normal!important;overflow-wrap:break-word!important;}
+  .print-tbl th{background:#f0f0f0!important;padding:4px 5px!important;border:.5px solid #999!important;text-align:center!important;font-size:11px!important;font-weight:800!important;vertical-align:middle!important;white-space:normal!important;overflow-wrap:break-word!important;}
   .print-tbl td{padding:4px 5px!important;border:.5px solid #bbb!important;text-align:center!important;font-size:11px!important;vertical-align:middle!important;white-space:normal!important;overflow-wrap:break-word!important;word-break:normal!important;}
   .print-tbl td.box-col{min-width:0!important;}
   .print-page{break-after:auto!important;page-break-after:auto!important;}
@@ -2445,13 +2445,13 @@ function buildPicklistPrintPages_(cfg){
             ${qrUrl?`<img class="print-qr" src="${qrUrl}" alt="QR ${cfg.drNo}">`:''}
             <div>
               <div class="print-hdr-title">${cfg.drNo||''}</div>
-              <div class="print-hdr-meta" style="font-weight:700;font-size:11px;">${cfg.store||''}</div>
+              <div class="print-hdr-meta print-hdr-store" style="font-weight:800;font-size:16.5px;">${cfg.store||''}</div>
               <div class="print-hdr-meta">Dispatch Date: ${cfg.date||''}${reqByMeta} · Printed: ${cfg.printDate||''}</div>
             </div>
           </div>
           <div style="text-align:right;">
-            <div class="print-hdr-meta" style="font-weight:700;font-size:11px;">Total lines: ${rows.length}</div>
-            <div class="print-hdr-meta" style="font-weight:700;font-size:11px;">Total units: ${totalQty.toLocaleString()}</div>
+            <div class="print-hdr-meta" style="font-weight:800;font-size:14px;">Total lines: ${rows.length}</div>
+            <div class="print-hdr-meta" style="font-weight:800;font-size:14px;">Total units: ${totalQty.toLocaleString()}</div>
           </div>
         </div>
         <table class="print-tbl print-picklist"><colgroup><col class="col-no"><col class="col-rack"><col class="col-reason"><col class="col-barcode"><col class="col-item"><col class="col-color"><col class="col-size"><col class="col-qty"><col class="col-box"></colgroup>
