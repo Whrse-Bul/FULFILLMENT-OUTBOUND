@@ -282,10 +282,10 @@ tr.ob-match td{background:var(--grn-d);}
   .print-tbl thead{display:table-header-group!important;}
   .print-tbl tfoot{display:table-footer-group!important;}
   .print-tbl tr{break-inside:avoid!important;page-break-inside:avoid!important;page-break-after:auto!important;}
-  .print-tbl th{background:#f0f0f0!important;padding:4px 5px!important;border:.5px solid #999!important;text-align:center!important;font-size:11px!important;font-weight:800!important;vertical-align:middle!important;white-space:normal!important;overflow-wrap:break-word!important;}
+  .print-tbl th{background:#f0f0f0!important;padding:4px 5px!important;border:.5px solid #999!important;text-align:center!important;font-size:16.5px!important;font-weight:800!important;vertical-align:middle!important;white-space:normal!important;overflow-wrap:break-word!important;}
   .print-tbl td{padding:4px 5px!important;border:.5px solid #bbb!important;text-align:center!important;font-size:11px!important;vertical-align:middle!important;white-space:normal!important;overflow-wrap:break-word!important;word-break:normal!important;}
   .print-tbl td.box-col{min-width:0!important;}
-  .print-page{break-after:page!important;page-break-after:always!important;}
+  .print-page{break-after:auto!important;page-break-after:auto!important;}
   .print-page:last-child{break-after:auto!important;page-break-after:auto!important;}
   .print-tbl tbody tr:nth-child(even) td{background:#f3f5f4!important;}
   .print-tbl tbody tr:nth-child(odd) td{background:#ffffff!important;}
@@ -2417,28 +2417,17 @@ function makeQrUrl_(value){
 }
 
 function splitPicklistPrintRows_(rows){
-  const pages=[];
-  const firstLimit=35;
-  const nextLimit=37;
-  if(rows.length<=firstLimit){return [rows];}
-  pages.push(rows.slice(0,firstLimit));
-  for(let i=firstLimit;i<rows.length;i+=nextLimit){pages.push(rows.slice(i,i+nextLimit));}
-  return pages;
+  // V96: continuous print table. No manual 35/37 row limits.
+  // The browser print engine fills the page and repeats the table header via CSS.
+  return [rows||[]];
 }
 
 function buildPicklistPrintPages_(cfg){
   const rows=cfg.rows||[];
-  const pages=splitPicklistPrintRows_(rows);
   const totalQty=Number(cfg.totalQty||0);
   const qrUrl=makeQrUrl_(cfg.drNo||'');
-  let lineNo=0;
-  return pages.map((pageRows,pageIndex)=>{
-    const startLine=lineNo+1;
-    const endLine=lineNo+pageRows.length;
-    const body=pageRows.map(r=>{
-      lineNo++;
-      return `<tr>
-        <td class="print-center" style="font-weight:700;">${lineNo}</td>
+  const body=rows.map((r,i)=>`<tr>
+        <td class="print-center" style="font-weight:700;">${i+1}</td>
         <td class="print-left" style="font-weight:700;">${r.rackLocation||'—'}</td>
         <td class="print-left">${r.reason||'STORE REQUEST'}</td>
         <td class="mono print-left">${r.barcode||''}</td>
@@ -2447,10 +2436,9 @@ function buildPicklistPrintPages_(cfg){
         <td class="print-center">${r.size||'—'}</td>
         <td class="print-center" style="font-weight:800;">${r.qtyRqstd||0}</td>
         <td class="box-col print-center"></td>
-      </tr>`;
-    }).join('');
-    const reqByMeta=cfg.reqBy&&cfg.reqBy!=='—'?` · Requested by: ${cfg.reqBy}`:'';
-    return `
+      </tr>`).join('');
+  const reqByMeta=cfg.reqBy&&cfg.reqBy!=='—'?` · Requested by: ${cfg.reqBy}`:'';
+  return `
       <section class="print-page">
         <div class="print-hdr">
           <div class="print-hdr-left">
@@ -2464,8 +2452,6 @@ function buildPicklistPrintPages_(cfg){
           <div style="text-align:right;">
             <div class="print-hdr-meta" style="font-weight:700;font-size:11px;">Total lines: ${rows.length}</div>
             <div class="print-hdr-meta" style="font-weight:700;font-size:11px;">Total units: ${totalQty.toLocaleString()}</div>
-            <div class="print-hdr-meta">Page ${pageIndex+1} of ${pages.length}</div>
-            <div class="print-hdr-meta">Lines ${startLine}-${endLine}</div>
           </div>
         </div>
         <table class="print-tbl print-picklist"><colgroup><col class="col-no"><col class="col-rack"><col class="col-reason"><col class="col-barcode"><col class="col-item"><col class="col-color"><col class="col-size"><col class="col-qty"><col class="col-box"></colgroup>
@@ -2484,7 +2470,6 @@ function buildPicklistPrintPages_(cfg){
         </table>
         <div class="print-footer">WHSE Fulfillment Tracker · Printed ${cfg.printDate||''} · ${rows.length} lines · ${totalQty} units</div>
       </section>`;
-  }).join('');
 }
 
 function printUnscheduledPicklist(){
