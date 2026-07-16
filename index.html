@@ -972,7 +972,7 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
             <div class="dib"><strong id="ob-total-scanned-lbl">—</strong>Total Qty Scanned</div>
             <div class="dib"><strong id="ob-total-boxes-lbl">—</strong>Total Boxes Generated</div>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"><button class="btn-print" id="ob-label-btn" onclick="generateBoxLabels()" disabled>🏷 Print Box Label</button><button class="btn-print" id="ob-generate-btn" onclick="generateDR()" disabled>🧾 Generate DR PDF</button></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"><button class="btn-print" id="ob-label-btn" onclick="generateBoxLabels()" disabled>🏷 Print Box Label</button><button class="btn-print" id="ob-generate-btn" onclick="generateDR()" disabled>🧾 Print DR</button></div>
         </div>
 
         <div class="ob-layout">
@@ -3817,22 +3817,20 @@ function generateBoxLabels(){
 function generateDR(){
   if(!obDrNo)return;
   const btn=document.getElementById('ob-generate-btn');
-  btn.disabled=true;btn.textContent='Generating...';
+  btn.disabled=true;btn.textContent='Preparing print...';
   google.script.run
     .withSuccessHandler(res=>{
-      btn.textContent='🧾 Generate DR PDF';
-      if(!res.success){alert(res.msg||'Could not generate PDF.');btn.disabled=false;return;}
-      const byteChars=atob(res.pdfBase64);
-      const bytes=new Uint8Array(byteChars.length);
-      for(let i=0;i<byteChars.length;i++)bytes[i]=byteChars.charCodeAt(i);
-      const blob=new Blob([bytes],{type:'application/pdf'});
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement('a');a.href=url;a.download=res.fileName;a.click();
-      URL.revokeObjectURL(url);
+      btn.textContent='🧾 Print DR';
       btn.disabled=false;
+      if(!res.success){alert(res.msg||'Could not prepare DR print.');return;}
+      const w=window.open('', '_blank');
+      if(!w){alert('Popup was blocked. Please allow popups for this site, then click Print DR again.');return;}
+      w.document.open();
+      w.document.write(res.html||'');
+      w.document.close();
     })
-    .withFailureHandler(e=>{btn.disabled=false;btn.textContent='🧾 Generate DR PDF';alert('PDF generation error: '+(e&&e.message));})
-    .generateDeliveryReceiptPdf(obDrNo);
+    .withFailureHandler(e=>{btn.disabled=false;btn.textContent='🧾 Print DR';alert('DR print error: '+(e&&e.message));})
+    .getDeliveryReceiptPrintHtmlV104(obDrNo);
 }
 
 // ── Per-barcode scan detail popup: view / edit / delete saved scans ──────
