@@ -982,7 +982,7 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
               <div class="card-head"><span class="card-title">Scan a box</span></div>
               <div class="row2">
                 <div class="fg"><label>Scanned by</label><input type="text" id="ob-scanner" placeholder="Name"></div>
-                <div class="fg"><label>Dispatch Box No.</label><div style="display:flex;gap:8px;flex-wrap:wrap;"><input type="number" id="ob-box" placeholder="1" min="1" step="1" inputmode="numeric" pattern="[0-9]*" style="min-width:90px;flex:1;"><button type="button" class="btn-clear" style="white-space:nowrap;" onclick="openStockTransferModal()">Stock Transfer</button><button type="button" class="btn-clear" style="white-space:nowrap;" onclick="openVmMaterialModal()">VM Material</button></div><div class="box-number-hint"> </div></div>
+                <div class="fg"><label>Dispatch Box No.</label><div style="display:flex;gap:8px;flex-wrap:wrap;"><input type="number" id="ob-box" placeholder="1" min="1" step="1" inputmode="numeric" pattern="[0-9]*" style="min-width:90px;flex:1;"><button type="button" class="btn-clear" style="white-space:nowrap;" onclick="openStockTransferModal()">Stock Transfer</button><button type="button" class="btn-clear" style="white-space:nowrap;" onclick="openVmMaterialModal()">VM Material</button></div><div class="box-number-hint">Number only for regular boxes. VM Material can be saved as LOOSE.</div></div>
               </div>
               <div class="fg">
                 <div style="display:flex;justify-content:space-between;align-items:baseline;">
@@ -1101,7 +1101,7 @@ console.log("WHSE Fulfillment Tracker", APP_VERSION);
 // 2) Copy the /exec deployment URL.
 // 3) Paste it below, then upload this Index.html to GitHub Pages.
 // Example: const GAS_URL = "https://script.google.com/macros/s/AKfycbxxxx/exec";
-const GAS_URL = "https://script.google.com/macros/s/AKfycbw3tKwgY8_EkaQ-y8JWvlBIvfJw5ua5FMblNOiPGfy6rwidfBWnf-VDNB6vwIdIKq_K/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwxvUg8ARytVbFpSAVfnp5CFxOe8hdcHxS3TFrtcafrEomfOZauMrfzvLg9H8aL_fYzAA/exec";
 
 (function setupGitHubPagesGasBridge(){
   // When opened from Apps Script, the native google.script.run exists; use it.
@@ -1173,6 +1173,13 @@ let currentDrNo='', reasonOpts=[], m4Rows=[];
 let m4DrMap={};
 const SESSION_KEY='whse_session';
 const SESSION_TTL=24*60*60*1000;
+const WHSE_APP_STATE_KEY='whse_live_app_state_v99';
+const WHSE_OB_DRAFT_KEY='whse_outbound_draft_v99';
+let lastAutoRefreshAt=0;
+let restoreTriedOutboundV99=false;
+let restoreTriedPickingV99=false;
+function getWhseStateV99(){try{return JSON.parse(localStorage.getItem(WHSE_APP_STATE_KEY)||'{}')||{};}catch(e){return {};}}
+function setWhseStateV99(patch){try{localStorage.setItem(WHSE_APP_STATE_KEY,JSON.stringify(Object.assign(getWhseStateV99(),patch||{})));}catch(e){}}
 function saveSession(u){try{localStorage.setItem(SESSION_KEY,JSON.stringify({user:u,ts:Date.now()}));}catch(e){}}
 
 // ── SIDEBAR COLLAPSE ───────────────────────────────────────
@@ -1223,18 +1230,22 @@ function buildSidebar(){
   ]:[
     {id:'outbound', icon:'📤',label:'Outbound check'}
   ];
+  const savedPage=getWhseStateV99().page;
+  const activeId=items.some(it=>it.id===savedPage)?savedPage:items[0].id;
   const sb=document.getElementById('sidebar');
-  sb.innerHTML=items.map((it,i)=>`<div class="nav-item${i===0?' active':''}" onclick="showPage('${it.id}',this)">${it.icon}&nbsp; ${it.label}</div>`).join('');
-  showPage(items[0].id,sb.querySelector('.nav-item.active'));
+  sb.innerHTML=items.map(it=>`<div class="nav-item${it.id===activeId?' active':''}" data-page-id="${it.id}" onclick="showPage('${it.id}',this)">${it.icon}&nbsp; ${it.label}</div>`).join('');
+  showPage(activeId,sb.querySelector(`.nav-item[data-page-id="${activeId}"]`));
 }
 function showPage(id,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('pg-'+id)?.classList.add('active');
   el?.classList.add('active');
+  setWhseStateV99({page:id});
   if(id==='unscheduled'){renderUnscheduledPage();}
   if(id==='capacity'){switchCapacityView('calendar');}
-  if(id==='log'){initPickEncodingPage();}
+  if(id==='log'){initPickEncodingPage();setTimeout(restorePickingSelectionV99,250);}
+  if(id==='outbound'){setTimeout(restoreOutboundSelectionV99,350);}
 }
 
 // ── DASHBOARD ──────────────────────────────────────────────
@@ -1792,6 +1803,7 @@ function loadPivot(silent){
       populateCalStoreFilter();
       populateM4Stores();
       populateOBStores();
+      restoreLastActivityAfterPivotV99();
       const lu=document.getElementById('cal-last-updated');
       if(lu)lu.textContent='Last updated: '+new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'});
       // Summary auto-refresh only. Full line details are fetched only when user clicks View full details.
@@ -1806,8 +1818,21 @@ function loadPivot(silent){
 function startCalendarAutoRefresh(){
   if(calAutoRefreshTimer)clearInterval(calAutoRefreshTimer);
   calAutoRefreshTimer=setInterval(()=>{
-    const calendarActive=document.getElementById('pg-calendar')?.classList.contains('active');
-    if(calendarActive)loadPivot(true);
+    lastAutoRefreshAt=Date.now();
+    const active=document.querySelector('.page.active');
+    const activeId=active?String(active.id||'').replace('pg-',''):'';
+    // Refresh only the visible module. Do not reset active selections or typed values.
+    if(['calendar','dashboard','unscheduled','capacity'].includes(activeId)){
+      loadPivot(true);
+      if(activeId==='dashboard')loadDashboardData?.();
+      if(activeId==='capacity'){clearWHSECalendarCache?.();renderCapacityPlanning?.();}
+    } else if(activeId==='outbound' && obDrNo){
+      // Safe refresh: only reload saved baseline; keep current unsaved box scan.
+      refreshOBBaseline(false);
+    } else if(activeId==='log' && pickCurrentStatusV85){
+      // Safe refresh: reload selected picking DR only when the source-box form is not mid-save.
+      if(!document.getElementById('pick-save-btn')?.disabled) loadPickStatus();
+    }
   },60000);
 }
 
@@ -2737,6 +2762,83 @@ function exportM4(){
 }
 
 
+
+// ── LIVE / RESTORE HELPERS V99 ───────────────────────────
+function restoreLastActivityAfterPivotV99(){
+  const st=getWhseStateV99();
+  if(st.page==='outbound')setTimeout(restoreOutboundSelectionV99,300);
+  if(st.page==='log')setTimeout(restorePickingSelectionV99,300);
+}
+function savePickingSelectionV99(store,drNo){
+  if(store&&drNo)setWhseStateV99({pickStore:store,pickDrNo:drNo,page:'log'});
+}
+function restorePickingSelectionV99(){
+  if(restoreTriedPickingV99)return;
+  const st=getWhseStateV99();
+  if(!st.pickStore||!st.pickDrNo)return;
+  const pageActive=document.getElementById('pg-log')?.classList.contains('active');
+  if(!pageActive)return;
+  const storeSel=document.getElementById('pick-store');
+  const drSel=document.getElementById('pick-dr');
+  if(!storeSel || !Object.keys(pickDrMapV85||{}).length)return;
+  if(![...storeSel.options].some(o=>o.value===st.pickStore))return;
+  restoreTriedPickingV99=true;
+  storeSel.value=st.pickStore;
+  loadPickDRs();
+  setTimeout(()=>{
+    if(drSel && [...drSel.options].some(o=>o.value===st.pickDrNo))drSel.value=st.pickDrNo;
+    const qr=document.getElementById('pick-qr-input'); if(qr)qr.value=st.pickDrNo;
+    loadPickStatus();
+  },120);
+}
+function saveOutboundSelectionV99(store,drNo){
+  if(drNo)setWhseStateV99({obStore:store||'',obDrNo:drNo,page:'outbound'});
+}
+function restoreOutboundSelectionV99(){
+  if(restoreTriedOutboundV99)return;
+  const st=getWhseStateV99();
+  if(!st.obDrNo)return;
+  const pageActive=document.getElementById('pg-outbound')?.classList.contains('active');
+  if(!pageActive)return;
+  restoreTriedOutboundV99=true;
+  const qr=document.getElementById('ob-qr-input'); if(qr)qr.value=st.obDrNo;
+  loadOBStatus(st.obDrNo);
+}
+function getOutboundDraftV99(){try{return JSON.parse(localStorage.getItem(WHSE_OB_DRAFT_KEY)||'null');}catch(e){return null;}}
+function saveOutboundDraftV99(){
+  try{
+    if(!obDrNo || !obBatch || !Object.keys(obBatch).length){localStorage.removeItem(WHSE_OB_DRAFT_KEY);return;}
+    localStorage.setItem(WHSE_OB_DRAFT_KEY,JSON.stringify({
+      drNo:obDrNo,
+      store:(obBaseline&&obBaseline.store)||'',
+      boxNo:document.getElementById('ob-box')?.value||'',
+      scanner:document.getElementById('ob-scanner')?.value||'',
+      batch:obBatch,
+      history:obScanHistory||[],
+      batchStartMs:obBatchStartMs||Date.now(),
+      ts:Date.now()
+    }));
+  }catch(e){}
+}
+function clearOutboundDraftV99(){try{localStorage.removeItem(WHSE_OB_DRAFT_KEY);}catch(e){}}
+function maybeRestoreOutboundDraftV99(){
+  const draft=getOutboundDraftV99();
+  if(!draft||draft.drNo!==obDrNo||Object.keys(obBatch||{}).length)return;
+  const ageMins=Math.round((Date.now()-Number(draft.ts||0))/60000);
+  if(confirm(`Restore unsaved scans for this DR?\n\nBox No.: ${draft.boxNo||'—'}\nItems: ${Object.keys(draft.batch||{}).length}\nSaved locally: ${ageMins} minute(s) ago`)){
+    obBatch=draft.batch||{};
+    obScanHistory=draft.history||[];
+    obBatchStartMs=draft.batchStartMs||Date.now();
+    if(draft.boxNo&&document.getElementById('ob-box'))document.getElementById('ob-box').value=draft.boxNo;
+    if(draft.scanner&&document.getElementById('ob-scanner'))document.getElementById('ob-scanner').value=draft.scanner;
+    renderOBBatchTable();
+    renderOBLiveTable();
+  } else {
+    clearOutboundDraftV99();
+  }
+}
+window.addEventListener('beforeunload',()=>{try{saveOutboundDraftV99();}catch(e){}});
+
 // ── MODULE 4 — PICKING ENCODING ───────────────────────────
 let pickDrMapV85={};
 let pickCurrentStatusV85=null;
@@ -2748,6 +2850,7 @@ function initPickEncodingPage(){
     if(sel){
       sel.innerHTML='<option value="">Select store...</option>'+Object.keys(pickDrMapV85).sort().map(s=>`<option value="${s}">${s}</option>`).join('');
     }
+    setTimeout(restorePickingSelectionV99,120);
   }).withFailureHandler(e=>alert('Failed to load picking DR list: '+((e&&e.message)||e))).getPickingDrOptionsV85();
 }
 function loadPickDRs(){
@@ -2785,6 +2888,7 @@ function loadPickStatusSmartV87(){
 function loadPickStatus(){
   const store=document.getElementById('pick-store')?.value||'';
   const drNo=document.getElementById('pick-dr')?.value||'';
+  if(store&&drNo)savePickingSelectionV99(store,drNo);
   if(!store||!drNo){document.getElementById('pick-empty').style.display='block';document.getElementById('pick-content').style.display='none';return;}
   document.getElementById('pick-empty').style.display='none';
   document.getElementById('pick-content').style.display='block';
@@ -3030,6 +3134,7 @@ function loadOBStatus(drNoOverride){
   const drNo=drNoOverride||document.getElementById('ob-dr').value;
   if(!drNo){alert('Scan a DR tracking QR code, or select a store and DR first.');return;}
   obDrNo=drNo;
+  saveOutboundSelectionV99('',drNo);
   obBatch={};
   obScanHistory=[];
   obBatchStartMs=null;
@@ -3065,7 +3170,9 @@ function refreshOBBaseline(collapseQrCard){
       document.getElementById('ob-store-lbl').textContent=status.store;
       document.getElementById('ob-date-lbl').textContent=fmtDisplayDate(status.dispatchDate);
       syncOBSelectors(status.store,status.drNo);
+      saveOutboundSelectionV99(status.store,status.drNo);
       renderOBLiveTable();
+      maybeRestoreOutboundDraftV99();
       // V91: keep DR search/load bar visible after loading.
       toggleOBQrCard(false);
       const scanInput=document.getElementById('ob-scan-input');
@@ -3277,6 +3384,7 @@ function addOBScan(barcode){
     obScanHistory.push(barcode);
     renderOBBatchTable();
     renderOBLiveTable();
+    saveOutboundDraftV99();
     return;
   }
   // Reserve the slot immediately so a fast repeat scan of the same new barcode
@@ -3285,6 +3393,7 @@ function addOBScan(barcode){
   obScanHistory.push(barcode);
   renderOBBatchTable();
   renderOBLiveTable();
+  saveOutboundDraftV99();
   if(picked) return; // details already known from the picked record — no lookup needed
   google.script.run
     .withSuccessHandler(items=>{
@@ -3327,12 +3436,14 @@ function setOBScanQty(barcode,value){
   if(!Object.keys(obBatch).length) obBatchStartMs=null;
   renderOBBatchTable();
   renderOBLiveTable();
+  saveOutboundDraftV99();
 }
 function removeOBScan(barcode){
   delete obBatch[barcode];
   if(!Object.keys(obBatch).length) obBatchStartMs=null;
   renderOBBatchTable();
   renderOBLiveTable();
+  saveOutboundDraftV99();
 }
 function undoLastOBScan(){
   if(!obScanHistory.length)return;
@@ -3345,6 +3456,7 @@ function undoLastOBScan(){
   hideOBScanMsg();
   renderOBBatchTable();
   renderOBLiveTable();
+  saveOutboundDraftV99();
 }
 function clearOBBatch(){
   obBatch={};
@@ -3353,6 +3465,7 @@ function clearOBBatch(){
   hideOBScanMsg();
   renderOBBatchTable();
   renderOBLiveTable();
+  clearOutboundDraftV99();
 }
 
 
@@ -3432,6 +3545,7 @@ function addStockTransferRowObject(r,silent){
   hideOBScanMsg();
   renderOBBatchTable();
   renderOBLiveTable();
+  saveOutboundDraftV99();
 }
 
 function addStockTransferItem(filteredIndex){
@@ -3577,6 +3691,8 @@ function isValidBoxNo(boxNo){
 
 
 function clearOBDrSelection(){
+  setWhseStateV99({obStore:'',obDrNo:''});
+  clearOutboundDraftV99();
   obDrNo='';
   obBatch={};
   obScanHistory=[];
@@ -3647,6 +3763,7 @@ function generateOBBox(){
         });
         obBatch={};
         obScanHistory=[];
+        clearOutboundDraftV99();
         obBatchStartMs=null;
         hideOBScanMsg();
         renderOBBatchTable();
