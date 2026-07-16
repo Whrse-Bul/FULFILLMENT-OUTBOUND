@@ -1092,7 +1092,7 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
 </div>
 
 <script>
-const APP_VERSION="V98_GITHUB_LIVE_LABEL_SOUND";
+const APP_VERSION="V100_GITHUB_LIVE_ERROR_GUARD";
 console.log("WHSE Fulfillment Tracker", APP_VERSION);
 
 
@@ -1178,8 +1178,9 @@ const WHSE_OB_DRAFT_KEY='whse_outbound_draft_v99';
 let lastAutoRefreshAt=0;
 let restoreTriedOutboundV99=false;
 let restoreTriedPickingV99=false;
-function getWhseStateV99(){try{return JSON.parse(localStorage.getItem(WHSE_APP_STATE_KEY)||'{}')||{};}catch(e){return {};}}
+function getWhseStateV99(){try{const raw=localStorage.getItem(WHSE_APP_STATE_KEY);if(!raw)return {};const parsed=JSON.parse(raw);return (parsed&&typeof parsed==='object')?parsed:{};}catch(e){try{localStorage.removeItem(WHSE_APP_STATE_KEY);}catch(_e){} return {};}}
 function setWhseStateV99(patch){try{localStorage.setItem(WHSE_APP_STATE_KEY,JSON.stringify(Object.assign(getWhseStateV99(),patch||{})));}catch(e){}}
+function resetLiveStateV100(){try{localStorage.removeItem(WHSE_APP_STATE_KEY);localStorage.removeItem(WHSE_OB_DRAFT_KEY);}catch(e){}}
 function saveSession(u){try{localStorage.setItem(SESSION_KEY,JSON.stringify({user:u,ts:Date.now()}));}catch(e){}}
 
 // ── SIDEBAR COLLAPSE ───────────────────────────────────────
@@ -1793,17 +1794,17 @@ function loadPivot(silent){
     .withSuccessHandler(d=>{
       if(d.error){if(ce){ce.textContent='⚠ '+d.error;ce.style.display='block';}return;}
       pivot=d;
-      buildM4DrMap();
-      renderCalMetrics();
-      renderDashPickPanel();
-      renderCapacityPlanning();
-      renderCal();
-      renderUnscheduled();
-      renderUnscheduledPage();
-      populateCalStoreFilter();
-      populateM4Stores();
-      populateOBStores();
-      restoreLastActivityAfterPivotV99();
+      if(typeof buildM4DrMap==='function')buildM4DrMap();
+      if(typeof renderCalMetrics==='function')renderCalMetrics();
+      if(typeof renderDashPickPanel==='function')renderDashPickPanel();
+      if(typeof renderCapacityPlanning==='function')renderCapacityPlanning();
+      if(typeof renderCal==='function')renderCal();
+      if(typeof renderUnscheduled==='function')renderUnscheduled();
+      if(typeof renderUnscheduledPage==='function')renderUnscheduledPage();
+      if(typeof populateCalStoreFilter==='function')populateCalStoreFilter();
+      if(typeof populateM4Stores==='function')populateM4Stores();
+      if(typeof populateOBStores==='function')populateOBStores();
+      if(typeof restoreLastActivityAfterPivotV99==='function')restoreLastActivityAfterPivotV99();
       const lu=document.getElementById('cal-last-updated');
       if(lu)lu.textContent='Last updated: '+new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'});
       // Summary auto-refresh only. Full line details are fetched only when user clicks View full details.
@@ -1818,20 +1819,28 @@ function loadPivot(silent){
 function startCalendarAutoRefresh(){
   if(calAutoRefreshTimer)clearInterval(calAutoRefreshTimer);
   calAutoRefreshTimer=setInterval(()=>{
-    lastAutoRefreshAt=Date.now();
-    const active=document.querySelector('.page.active');
-    const activeId=active?String(active.id||'').replace('pg-',''):'';
-    // Refresh only the visible module. Do not reset active selections or typed values.
-    if(['calendar','dashboard','unscheduled','capacity'].includes(activeId)){
-      loadPivot(true);
-      if(activeId==='dashboard')loadDashboardData?.();
-      if(activeId==='capacity'){clearWHSECalendarCache?.();renderCapacityPlanning?.();}
-    } else if(activeId==='outbound' && obDrNo){
-      // Safe refresh: only reload saved baseline; keep current unsaved box scan.
-      refreshOBBaseline(false);
-    } else if(activeId==='log' && pickCurrentStatusV85){
-      // Safe refresh: reload selected picking DR only when the source-box form is not mid-save.
-      if(!document.getElementById('pick-save-btn')?.disabled) loadPickStatus();
+    try{
+      lastAutoRefreshAt=Date.now();
+      const active=document.querySelector('.page.active');
+      const activeId=active?String(active.id||'').replace('pg-',''):'';
+      // Refresh only the visible module. Do not reset active selections or typed values.
+      if(['calendar','dashboard','unscheduled','capacity'].includes(activeId)){
+        if(typeof loadPivot==='function') loadPivot(true);
+        if(activeId==='dashboard' && typeof loadDashboardData==='function') loadDashboardData();
+        if(activeId==='capacity'){
+          if(typeof clearWHSECalendarCache==='function') clearWHSECalendarCache();
+          if(typeof renderCapacityPlanning==='function') renderCapacityPlanning();
+        }
+      } else if(activeId==='outbound' && typeof obDrNo!=='undefined' && obDrNo){
+        // Safe refresh: only reload saved baseline; keep current unsaved box scan.
+        if(typeof refreshOBBaseline==='function') refreshOBBaseline(false);
+      } else if(activeId==='log' && typeof pickCurrentStatusV85!=='undefined' && pickCurrentStatusV85){
+        // Safe refresh: reload selected picking DR only when the source-box form is not mid-save.
+        const saveBtn=document.getElementById('pick-save-btn');
+        if((!saveBtn||!saveBtn.disabled) && typeof loadPickStatus==='function') loadPickStatus();
+      }
+    }catch(err){
+      console.warn('Auto refresh skipped:',err&&err.message?err.message:err);
     }
   },60000);
 }
@@ -2795,14 +2804,17 @@ function saveOutboundSelectionV99(store,drNo){
   if(drNo)setWhseStateV99({obStore:store||'',obDrNo:drNo,page:'outbound'});
 }
 function restoreOutboundSelectionV99(){
-  if(restoreTriedOutboundV99)return;
-  const st=getWhseStateV99();
-  if(!st.obDrNo)return;
-  const pageActive=document.getElementById('pg-outbound')?.classList.contains('active');
-  if(!pageActive)return;
-  restoreTriedOutboundV99=true;
-  const qr=document.getElementById('ob-qr-input'); if(qr)qr.value=st.obDrNo;
-  loadOBStatus(st.obDrNo);
+  try{
+    if(restoreTriedOutboundV99)return;
+    const st=getWhseStateV99();
+    if(!st.obDrNo)return;
+    const pg=document.getElementById('pg-outbound');
+    const pageActive=pg&&pg.classList.contains('active');
+    if(!pageActive)return;
+    restoreTriedOutboundV99=true;
+    const qr=document.getElementById('ob-qr-input'); if(qr)qr.value=st.obDrNo;
+    if(typeof loadOBStatus==='function')loadOBStatus(st.obDrNo);
+  }catch(e){console.warn('Outbound restore skipped:',e&&e.message?e.message:e);}
 }
 function getOutboundDraftV99(){try{return JSON.parse(localStorage.getItem(WHSE_OB_DRAFT_KEY)||'null');}catch(e){return null;}}
 function saveOutboundDraftV99(){
