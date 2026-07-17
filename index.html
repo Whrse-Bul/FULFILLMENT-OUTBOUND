@@ -548,7 +548,26 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
 .whse-person-row{display:grid;grid-template-columns:1fr 80px 80px;gap:8px;padding:6px 0;border-bottom:1px solid #edf2ef;font-size:12px;}
 .whse-person-row:last-child{border-bottom:0;}
 .whse-person-row.head{font-size:10px;text-transform:uppercase;color:var(--txt2);font-weight:900;}
-@media(max-width:900px){.whse-detail-grid{grid-template-columns:1fr;}.calendar-folder-tabs{width:100%;}.calendar-folder-tab{flex:1;}}
+.whse-inline-mini{display:grid;grid-template-columns:1fr 1fr;gap:5px 8px;font-size:10px;margin-top:6px;}
+.whse-inline-mini span{display:block;color:var(--txt2);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;}
+.whse-inline-mini strong{display:block;color:var(--txt);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.whse-full-card{background:#fff;border:1px solid var(--bdr);border-radius:14px;padding:14px;box-shadow:0 8px 22px rgba(67,112,86,.10);}
+.whse-full-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;}
+.whse-full-title{font-size:18px;font-weight:900;color:var(--txt);margin:0 0 3px;}
+.whse-full-sub{font-size:12px;color:var(--txt2);}
+.whse-full-summary{display:grid;grid-template-columns:repeat(4,minmax(110px,1fr));gap:10px;margin-bottom:12px;}
+.whse-full-stat{background:#f8fbf8;border:1px solid var(--bdr);border-radius:10px;padding:10px;}
+.whse-full-stat span{display:block;font-size:10px;font-weight:900;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;}
+.whse-full-stat strong{font-size:15px;color:var(--txt);}
+.whse-full-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+.whse-full-table-wrap{border:1px solid var(--bdr);border-radius:12px;overflow:auto;background:#fff;}
+.whse-full-table{width:100%;border-collapse:collapse;font-size:12px;}
+.whse-full-table th{background:#dcefe5;text-align:left;font-size:10px;text-transform:uppercase;color:var(--txt2);letter-spacing:.04em;padding:8px;border-bottom:1px solid var(--bdr);white-space:nowrap;}
+.whse-full-table td{padding:8px;border-bottom:1px solid #edf2ef;vertical-align:top;}
+.whse-full-table tr:last-child td{border-bottom:0;}
+.whse-full-table .num{text-align:right;font-weight:800;}
+.whse-name-list{max-width:260px;white-space:normal;line-height:1.35;}
+@media(max-width:900px){.whse-detail-grid,.whse-full-grid,.whse-full-summary{grid-template-columns:1fr;}.calendar-folder-tabs{width:100%;}.calendar-folder-tab{flex:1;}}
 
 
 
@@ -1111,7 +1130,7 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
 </div>
 
 <script>
-const APP_VERSION="V108_STORE_WAREHOUSE_CALENDAR";
+const APP_VERSION="V111_WAREHOUSE_FULL_DETAILS";
 console.log("WHSE Fulfillment Tracker", APP_VERSION);
 
 
@@ -2055,21 +2074,72 @@ function renderWarehouseInlineBoxV108(store,date){
   if(key!==selectedPrepKey)return '';
   const d=warehouseSummaryByKeyV108(store,date);
   if(!d)return `<div class="prep-inline-card"><div class="empty" style="padding:8px;">No warehouse activity found.</div></div>`;
-  const pickRows=(d.pickerBreakdown||[]).length?(d.pickerBreakdown||[]).map(p=>`<div class="whse-person-row"><div>${p.name}</div><div>${Number(p.qty||0).toLocaleString()} qty</div><div>${Number(p.sku||0).toLocaleString()} SKU</div></div>`).join(''):'<div class="empty" style="padding:6px 0;">No picker yet.</div>';
-  const scanRows=(d.scannerBreakdown||[]).length?(d.scannerBreakdown||[]).map(p=>`<div class="whse-person-row"><div>${p.name}</div><div>${Number(p.qty||0).toLocaleString()} qty</div><div>${Number(p.boxes||0).toLocaleString()} box</div></div>`).join(''):'<div class="empty" style="padding:6px 0;">No scanner yet.</div>';
+  const escStore=String(store).replace(/'/g,"\'");
+  const pickTop=(d.pickerBreakdown||[]).slice(0,2).map(p=>`${p.name} (${Number(p.qty||0).toLocaleString()})`).join(', ') || '—';
+  const scanTop=(d.scannerBreakdown||[]).slice(0,2).map(p=>`${p.name} (${Number(p.qty||0).toLocaleString()})`).join(', ') || '—';
   return `<div class="prep-inline-card">
-    <div class="prep-inline-top"><div class="prep-inline-title" style="margin-bottom:0;">${d.store} · Warehouse activity</div><button class="prep-inline-hide" onclick="event.stopPropagation();hideCalendarPrepDetails()">Hide</button></div>
+    <div class="prep-inline-top"><div class="prep-inline-title" style="margin-bottom:0;">${d.store} · Warehouse summary</div><button class="prep-inline-hide" onclick="event.stopPropagation();hideCalendarPrepDetails()">Hide</button></div>
     <div class="prep-inline-grid">
       <div><span>Total Picked</span><strong>${Number(d.totalPicked||0).toLocaleString()}</strong></div>
       <div><span>Total Scanned</span><strong>${Number(d.totalScanned||0).toLocaleString()}</strong></div>
       <div><span>Total Boxes</span><strong>${Number(d.totalBoxes||0).toLocaleString()}</strong></div>
       <div><span>DR Count</span><strong>${(d.drs||[]).length}</strong></div>
     </div>
-    <div class="whse-detail-grid">
-      <div class="whse-detail-card"><h4>Picked by</h4><div class="whse-person-row head"><div>Name</div><div>Qty</div><div>SKU</div></div>${pickRows}</div>
-      <div class="whse-detail-card"><h4>Scanned by</h4><div class="whse-person-row head"><div>Name</div><div>Qty</div><div>Boxes</div></div>${scanRows}</div>
+    <div class="whse-inline-mini">
+      <div><span>Picked by</span><strong title="${pickTop}">${pickTop}</strong></div>
+      <div><span>Scanned by</span><strong title="${scanTop}">${scanTop}</strong></div>
     </div>
+    <button class="btn-clear" style="width:100%;margin-top:8px;padding:6px 10px;font-size:11px;" onclick="event.stopPropagation();viewFullWarehouseDetailsV111('${escStore}','${date}')">Full details</button>
   </div>`;
+}
+
+function viewFullWarehouseDetailsV111(store,date){
+  selectedPrepKey=prepKey(store,date);
+  renderCal();
+  const panel=document.getElementById('calendar-prep-panel');
+  if(!panel)return;
+  panel.classList.add('active');
+  if(!warehouseCal){panel.innerHTML='<div class="prep-page-card"><div class="loading">Loading warehouse details...</div></div>';loadWarehouseCalendarV108(false);return;}
+  const d=warehouseSummaryByKeyV108(store,date);
+  if(!d){panel.innerHTML='<div class="prep-page-card"><div class="empty">No warehouse activity found.</div></div>';return;}
+  const drRows=(warehouseCal.scheduled||[]).filter(r=>r.store===store&&r.dispatchDate===date);
+  const pickRows=(d.pickerBreakdown||[]).length?(d.pickerBreakdown||[]).map(p=>`<tr><td>${p.name}</td><td class="num">${Number(p.qty||0).toLocaleString()}</td><td class="num">${Number(p.sku||0).toLocaleString()}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No picker yet.</td></tr>';
+  const scanRows=(d.scannerBreakdown||[]).length?(d.scannerBreakdown||[]).map(p=>`<tr><td>${p.name}</td><td class="num">${Number(p.qty||0).toLocaleString()}</td><td class="num">${Number(p.boxes||0).toLocaleString()}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No scanner yet.</td></tr>';
+  const drBreakRows=drRows.length?drRows.map(r=>{
+    const info=getCalStatusInfo(r);
+    const pickers=(r.pickerBreakdown||[]).map(p=>`${p.name} (${Number(p.qty||0).toLocaleString()})`).join('<br>') || '—';
+    const scanners=(r.scannerBreakdown||[]).map(p=>`${p.name} (${Number(p.qty||0).toLocaleString()})`).join('<br>') || '—';
+    return `<tr>
+      <td>${r.drNo||'—'}</td>
+      <td class="whse-name-list">${pickers}</td>
+      <td class="whse-name-list">${scanners}</td>
+      <td class="num">${Number(r.totalPicked||0).toLocaleString()}</td>
+      <td class="num">${Number(r.totalScanned||0).toLocaleString()}</td>
+      <td class="num">${Number(r.totalBoxes||0).toLocaleString()}</td>
+      <td><span class="prep-status-chip ${info.key}">${statusIcon(info.key)} ${info.label}</span></td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="7" class="empty">No DR breakdown found.</td></tr>';
+  panel.innerHTML=`<div class="whse-full-card">
+    <div class="whse-full-head">
+      <div>
+        <p class="whse-full-title">${d.store} - Warehouse full details</p>
+        <div class="whse-full-sub">Dispatch Date: ${fmtDisplayDate(d.dispatchDate)} · DR Count: ${(d.drs||[]).length}</div>
+      </div>
+      <button class="btn-clear" onclick="hideCalendarPrepDetails()">Hide details</button>
+    </div>
+    <div class="whse-full-summary">
+      <div class="whse-full-stat"><span>Total Picked</span><strong>${Number(d.totalPicked||0).toLocaleString()}</strong></div>
+      <div class="whse-full-stat"><span>Total Scanned</span><strong>${Number(d.totalScanned||0).toLocaleString()}</strong></div>
+      <div class="whse-full-stat"><span>Total Boxes</span><strong>${Number(d.totalBoxes||0).toLocaleString()}</strong></div>
+      <div class="whse-full-stat"><span>Total SKU</span><strong>${Number(d.totalSKU||0).toLocaleString()}</strong></div>
+    </div>
+    <div class="whse-full-grid">
+      <div class="whse-detail-card"><h4>Picked by</h4><div class="whse-full-table-wrap"><table class="whse-full-table"><thead><tr><th>Name</th><th class="num">Qty</th><th class="num">SKU</th></tr></thead><tbody>${pickRows}</tbody></table></div></div>
+      <div class="whse-detail-card"><h4>Scanned by</h4><div class="whse-full-table-wrap"><table class="whse-full-table"><thead><tr><th>Name</th><th class="num">Qty</th><th class="num">Boxes</th></tr></thead><tbody>${scanRows}</tbody></table></div></div>
+    </div>
+    <div class="whse-detail-card"><h4>Store / DR Breakdown</h4><div class="whse-full-table-wrap"><table class="whse-full-table"><thead><tr><th>DR Tracking No.</th><th>Picker/s</th><th>Scanner/s</th><th class="num">Picked Qty</th><th class="num">Scanned Qty</th><th class="num">Boxes</th><th>Status</th></tr></thead><tbody>${drBreakRows}</tbody></table></div></div>
+  </div>`;
+  panel.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 function renderCal(){
@@ -2200,7 +2270,10 @@ function openCalendarPrepDetail(store,date){
     selectedPrepKey=key;
     renderCal();
     const panel=document.getElementById('calendar-prep-panel');
-    if(panel){panel.classList.add('active');panel.innerHTML=renderWarehouseInlineBoxV108(store,date);}
+    if(panel){
+      panel.classList.remove('active');
+      panel.innerHTML='<div class="prep-selected-hint">Warehouse summary opened in the calendar. Click Full details to show the complete picker/scanner breakdown below.</div>';
+    }
     return;
   }
   if(selectedPrepKey===key && selectedPrepSummary && !selectedPrepLoading){
