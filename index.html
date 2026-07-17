@@ -536,6 +536,21 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
 .prep-head-stat strong{display:block;font-size:15px;color:var(--txt);}
 @media(max-width:1100px){.cal-col .prep-tile-grid{grid-template-columns:1fr;}}
 
+/* V108 STORE / WAREHOUSE folder tabs */
+.calendar-folder-tabs{display:inline-flex;gap:6px;border:1px solid var(--bdr);background:#fff;border-radius:12px;padding:5px;margin:10px 0 12px;box-shadow:0 4px 12px rgba(67,112,86,.08);}
+.calendar-folder-tab{border:0;background:transparent;border-radius:9px;padding:8px 16px;font-size:12px;font-weight:900;color:var(--txt2);cursor:pointer;letter-spacing:.03em;}
+.calendar-folder-tab.active{background:var(--grn);color:#fff;box-shadow:0 4px 10px rgba(54,92,109,.18);}
+.store-tile.whse-tile .st-workers{font-size:9.5px;line-height:1.25;color:var(--txt2);margin-top:4px;white-space:normal;}
+.store-tile.whse-tile .st-workers strong{color:var(--txt);font-weight:900;}
+.whse-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;}
+.whse-detail-card{background:#fff;border:1px solid var(--bdr);border-radius:12px;padding:12px;}
+.whse-detail-card h4{font-size:13px;margin-bottom:8px;color:var(--txt);}
+.whse-person-row{display:grid;grid-template-columns:1fr 80px 80px;gap:8px;padding:6px 0;border-bottom:1px solid #edf2ef;font-size:12px;}
+.whse-person-row:last-child{border-bottom:0;}
+.whse-person-row.head{font-size:10px;text-transform:uppercase;color:var(--txt2);font-weight:900;}
+@media(max-width:900px){.whse-detail-grid{grid-template-columns:1fr;}.calendar-folder-tabs{width:100%;}.calendar-folder-tab{flex:1;}}
+
+
 
 .pick-v86-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:start;}
 .pick-v86-form .selected-line{background:#eef8f1;border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px;font-size:12px;line-height:1.45;}
@@ -750,7 +765,11 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
     <!-- MODULE 2: MERCH CALENDAR -->
     <div id="pg-calendar" class="page">
       <p class="page-title">Merch stock request calendar</p>
-      <p class="page-sub">Source: PIVOT DASHBOARD · click any store tile to view preparation details</p>
+      <p class="page-sub" id="cal-subtitle">Source: PIVOT DASHBOARD · click any store tile to view preparation details</p>
+      <div class="calendar-folder-tabs" aria-label="Calendar view tabs">
+        <button class="calendar-folder-tab active" id="cal-tab-store" onclick="switchCalendarFolder('store')">STORE</button>
+        <button class="calendar-folder-tab" id="cal-tab-warehouse" onclick="switchCalendarFolder('warehouse')">WAREHOUSE</button>
+      </div>
       <div id="cal-error" class="err-inline" style="display:none;"></div>
       <!-- 3 week metrics -->
       <div class="cal-strip">
@@ -1092,7 +1111,7 @@ tr.ob-mismatch td{background:#f4d9dc!important;}
 </div>
 
 <script>
-const APP_VERSION="V100_GITHUB_LIVE_ERROR_GUARD";
+const APP_VERSION="V108_STORE_WAREHOUSE_CALENDAR";
 console.log("WHSE Fulfillment Tracker", APP_VERSION);
 
 
@@ -1164,7 +1183,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbw3tKwgY8_EkaQ-y8JWvlBI
   window.google = { script: { run: runner } };
 })();
 // ── STATE ──────────────────────────────────────────────────
-let USER=null, allInv=[], pivot=null;
+let USER=null, allInv=[], pivot=null, warehouseCal=null, calendarFolder="store";
 let locData={stores:[],reqBy:[],reasons:[]}, plItems=[], calOffset=0;
 let currentDrNo='', reasonOpts=[], m4Rows=[];
 // pivot.scheduled: [{dispatchDate,store,drNo,totalSKU,totalRqstd,totalPicked,pct}]
@@ -1803,6 +1822,7 @@ function loadPivot(silent){
       if(typeof renderUnscheduledPage==='function')renderUnscheduledPage();
       if(typeof populateCalStoreFilter==='function')populateCalStoreFilter();
       if(typeof populateM4Stores==='function')populateM4Stores();
+      if(calendarFolder==='warehouse' && typeof loadWarehouseCalendarV108==='function')loadWarehouseCalendarV108(true);
       if(typeof populateOBStores==='function')populateOBStores();
       if(typeof restoreLastActivityAfterPivotV99==='function')restoreLastActivityAfterPivotV99();
       const lu=document.getElementById('cal-last-updated');
@@ -1976,6 +1996,82 @@ function renderInlinePrepBox(store,date){
 }
 
 
+
+function switchCalendarFolder(mode){
+  calendarFolder = (mode === 'warehouse') ? 'warehouse' : 'store';
+  document.getElementById('cal-tab-store')?.classList.toggle('active', calendarFolder === 'store');
+  document.getElementById('cal-tab-warehouse')?.classList.toggle('active', calendarFolder === 'warehouse');
+  const sub=document.getElementById('cal-subtitle');
+  if(sub){
+    sub.textContent = calendarFolder === 'warehouse'
+      ? 'Warehouse view · see who picked and scanned each store'
+      : 'Source: PIVOT DASHBOARD · click any store tile to view preparation details';
+  }
+  hideCalendarPrepDetails();
+  if(calendarFolder === 'warehouse'){
+    if(!warehouseCal) loadWarehouseCalendarV108(false);
+    else renderCal();
+  } else {
+    renderCal();
+  }
+}
+function loadWarehouseCalendarV108(silent){
+  const ce=document.getElementById('cal-error'); if(ce)ce.style.display='none';
+  if(!silent && calendarFolder==='warehouse'){
+    const el=document.getElementById('cal-7'); if(el)el.innerHTML='<div class="loading">Loading warehouse view...</div>';
+  }
+  google.script.run
+    .withSuccessHandler(d=>{
+      if(d && d.error){ if(ce){ce.textContent='⚠ '+d.error;ce.style.display='block';} return; }
+      warehouseCal=d||{scheduled:[]};
+      if(calendarFolder==='warehouse') renderCal();
+    })
+    .withFailureHandler(e=>{ if(ce){ce.textContent='Failed to load warehouse calendar: '+(e&&e.message||e);ce.style.display='block';} })
+    .getWarehouseCalendarDataV108();
+}
+function shortNamesV108(names){
+  names=(names||[]).filter(Boolean);
+  if(!names.length)return '—';
+  return names.length<=2?names.join(', '):(names.slice(0,2).join(', ')+' +'+(names.length-2));
+}
+function warehouseSummaryByKeyV108(store,date){
+  if(!warehouseCal)return null;
+  const rows=(warehouseCal.scheduled||[]).filter(r=>r.store===store&&r.dispatchDate===date);
+  if(!rows.length)return null;
+  const out={store,dispatchDate:date,totalSKU:0,totalPicked:0,totalScanned:0,totalBoxes:0,totalRqstd:0,totalOs:0,allPickingDone:true,drs:[],pickers:{},scanners:{}};
+  rows.forEach(r=>{
+    out.totalSKU+=Number(r.totalSKU||0); out.totalPicked+=Number(r.totalPicked||0); out.totalScanned+=Number(r.totalScanned||0); out.totalBoxes+=Number(r.totalBoxes||0); out.totalRqstd+=Number(r.totalRqstd||0); out.totalOs+=Number(r.totalOs||0);
+    if(!r.allPickingDone)out.allPickingDone=false; if(r.drNo)out.drs.push(r.drNo);
+    (r.pickerBreakdown||[]).forEach(p=>{ if(!out.pickers[p.name])out.pickers[p.name]={name:p.name,qty:0,sku:0}; out.pickers[p.name].qty+=Number(p.qty||0); out.pickers[p.name].sku+=Number(p.sku||0); });
+    (r.scannerBreakdown||[]).forEach(p=>{ if(!out.scanners[p.name])out.scanners[p.name]={name:p.name,qty:0,sku:0,boxes:0}; out.scanners[p.name].qty+=Number(p.qty||0); out.scanners[p.name].sku+=Number(p.sku||0); out.scanners[p.name].boxes+=Number(p.boxes||0); });
+  });
+  out.pickerBreakdown=Object.values(out.pickers).sort((a,b)=>b.qty-a.qty||a.name.localeCompare(b.name));
+  out.scannerBreakdown=Object.values(out.scanners).sort((a,b)=>b.qty-a.qty||a.name.localeCompare(b.name));
+  out.pickerNames=out.pickerBreakdown.map(p=>p.name); out.scannerNames=out.scannerBreakdown.map(p=>p.name);
+  return out;
+}
+function renderWarehouseInlineBoxV108(store,date){
+  const key=prepKey(store,date);
+  if(key!==selectedPrepKey)return '';
+  const d=warehouseSummaryByKeyV108(store,date);
+  if(!d)return `<div class="prep-inline-card"><div class="empty" style="padding:8px;">No warehouse activity found.</div></div>`;
+  const pickRows=(d.pickerBreakdown||[]).length?(d.pickerBreakdown||[]).map(p=>`<div class="whse-person-row"><div>${p.name}</div><div>${Number(p.qty||0).toLocaleString()} qty</div><div>${Number(p.sku||0).toLocaleString()} SKU</div></div>`).join(''):'<div class="empty" style="padding:6px 0;">No picker yet.</div>';
+  const scanRows=(d.scannerBreakdown||[]).length?(d.scannerBreakdown||[]).map(p=>`<div class="whse-person-row"><div>${p.name}</div><div>${Number(p.qty||0).toLocaleString()} qty</div><div>${Number(p.boxes||0).toLocaleString()} box</div></div>`).join(''):'<div class="empty" style="padding:6px 0;">No scanner yet.</div>';
+  return `<div class="prep-inline-card">
+    <div class="prep-inline-top"><div class="prep-inline-title" style="margin-bottom:0;">${d.store} · Warehouse activity</div><button class="prep-inline-hide" onclick="event.stopPropagation();hideCalendarPrepDetails()">Hide</button></div>
+    <div class="prep-inline-grid">
+      <div><span>Total Picked</span><strong>${Number(d.totalPicked||0).toLocaleString()}</strong></div>
+      <div><span>Total Scanned</span><strong>${Number(d.totalScanned||0).toLocaleString()}</strong></div>
+      <div><span>Total Boxes</span><strong>${Number(d.totalBoxes||0).toLocaleString()}</strong></div>
+      <div><span>DR Count</span><strong>${(d.drs||[]).length}</strong></div>
+    </div>
+    <div class="whse-detail-grid">
+      <div class="whse-detail-card"><h4>Picked by</h4><div class="whse-person-row head"><div>Name</div><div>Qty</div><div>SKU</div></div>${pickRows}</div>
+      <div class="whse-detail-card"><h4>Scanned by</h4><div class="whse-person-row head"><div>Name</div><div>Qty</div><div>Boxes</div></div>${scanRows}</div>
+    </div>
+  </div>`;
+}
+
 function renderCal(){
   if(!pivot)return;
   const dates=getWeekDates(),today=getTodayStr();
@@ -1984,7 +2080,7 @@ function renderCal(){
 
   document.getElementById('cal-7').innerHTML=dates.map((ds,i)=>{
     const isT=ds===today,isP=ds<today;
-    let rows=(pivot.scheduled||[]).filter(r=>r.dispatchDate===ds&&(!sf||r.store===sf));
+    let rows=((calendarFolder==='warehouse' && warehouseCal)?(warehouseCal.scheduled||[]):(pivot.scheduled||[])).filter(r=>r.dispatchDate===ds&&(!sf||r.store===sf));
     const byStore={};
     rows.forEach(r=>{
       if(!byStore[r.store])byStore[r.store]={store:r.store,dispatchDate:ds,totalSKU:0,totalRqstd:0,totalPicked:0,totalScanned:0,totalBoxes:0,totalValue:0,pickedValue:0,scannedValue:0,totalOs:0,allPickingDone:true,drs:[]};
@@ -1999,11 +2095,26 @@ function renderCal(){
       byStore[r.store].totalOs+=Number(r.totalOs||r.osUnits||0);
       if(!r.allPickingDone) byStore[r.store].allPickingDone=false;
       if(r.drNo)byStore[r.store].drs.push(r.drNo);
+      if(calendarFolder==='warehouse'){
+        byStore[r.store].pickerNames = byStore[r.store].pickerNames || {};
+        byStore[r.store].scannerNames = byStore[r.store].scannerNames || {};
+        (r.pickers||[]).forEach(n=>{ if(n)byStore[r.store].pickerNames[n]=true; });
+        (r.scanners||[]).forEach(n=>{ if(n)byStore[r.store].scannerNames[n]=true; });
+      }
     });
     const tiles=Object.values(byStore).map(s=>{
       const info=getCalStatusInfo(s);
       const esc=s.store.replace(/'/g,"\\'");
       const key=prepKey(s.store,ds);
+      if(calendarFolder==='warehouse'){
+        const pnames=Object.keys(s.pickerNames||{}), snames=Object.keys(s.scannerNames||{});
+        return `<div class="store-tile whse-tile prep-${info.key}${key===selectedPrepKey?' is-selected':''}" onclick="openCalendarPrepDetail('${esc}','${ds}')">
+          <div class="st-name" title="${s.store}">${s.store}</div>
+          <div class="st-workers"><strong>P:</strong> ${shortNamesV108(pnames)}</div>
+          <div class="st-workers"><strong>S:</strong> ${shortNamesV108(snames)}</div>
+          <span class="prep-status-chip ${info.key}">${statusIcon(info.key)} ${info.label}</span>
+        </div>${renderWarehouseInlineBoxV108(s.store,ds)}`;
+      }
       return `<div class="store-tile prep-${info.key}${key===selectedPrepKey?' is-selected':''}" onclick="openCalendarPrepDetail('${esc}','${ds}')">
         <div class="st-name" title="${s.store}">${s.store}</div>
         <span class="prep-status-chip ${info.key}">${statusIcon(info.key)} ${info.label}</span>
@@ -2085,6 +2196,13 @@ function backToCalendar(){
 function openPreparationDetail(store,date){ openCalendarPrepDetail(store,date); }
 function openCalendarPrepDetail(store,date){
   const key=prepKey(store,date);
+  if(calendarFolder==='warehouse'){
+    selectedPrepKey=key;
+    renderCal();
+    const panel=document.getElementById('calendar-prep-panel');
+    if(panel){panel.classList.add('active');panel.innerHTML=renderWarehouseInlineBoxV108(store,date);}
+    return;
+  }
   if(selectedPrepKey===key && selectedPrepSummary && !selectedPrepLoading){
     hideCalendarPrepDetails();
     return;
