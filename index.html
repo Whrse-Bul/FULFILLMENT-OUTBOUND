@@ -1250,7 +1250,7 @@ function initApp(){
   document.getElementById('hdr-name').textContent=USER.name;
   const rp=document.getElementById('hdr-role');
   rp.textContent=USER.role;rp.className='rp '+(USER.role==='Warehouse Admin'?'rp-admin':'rp-picker');
-  buildSidebar();loadInv();loadPivot();renderDashboard();startCalendarAutoRefresh();
+  buildSidebar();loadInv();loadPivot();renderDashboard();
   google.script.run
     .withSuccessHandler(d=>{locData=d;reasonOpts=d.reasons;populateFormDropdowns();})
     .withFailureHandler(e=>console.error('getLocationData failed:',e&&e.message))
@@ -2340,51 +2340,62 @@ function renderPreparationDetail(d,targetId){
   if(!d||d.error){wrap.innerHTML='<div class="prep-page-card"><div class="err-inline">'+(d&&d.error?d.error:'No data found.')+'</div></div>';return;}
   prepRowsAll=d.rows||[];
   const badge=prepBadgeClass(d.tileClass);
+  const isOutbound=d.detailMode==='outbound';
   const sub=document.getElementById('prep-page-sub');
   if(sub)sub.textContent=`${d.store} · ${d.drNo||'—'} · ${fmtDisplayDate(d.dispatchDate)}`;
+  const drPrintButtons=(isOutbound && String(d.status||'').toLowerCase()==='dispatched' && (d.drNos||[]).length)
+    ? `<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">${(d.drNos||[]).map(dr=>`<button class="btn-print" style="padding:8px 10px;font-size:11px;" onclick="printDRFromCalendar('${String(dr).replace(/'/g,"\\'")}')">🧾 Print DR ${String(dr).replace(/</g,'&lt;')}</button>`).join('')}</div>`
+    : '';
+  const summaryCards = isOutbound ? `
+        <div class="prep-summary-card"><div class="lbl">Store name</div><div class="val">${d.store}</div></div>
+        <div class="prep-summary-card"><div class="lbl">DR tracking no.</div><div class="val" style="font-size:13px;">${d.drNo||'—'}</div></div>
+        <div class="prep-summary-card"><div class="lbl">Total picked</div><div class="val">${Number(d.totalPicked||0).toLocaleString()}</div></div>
+        <div class="prep-summary-card"><div class="lbl">Total scanned</div><div class="val">${Number(d.totalScanned||0).toLocaleString()}</div></div>
+        <div class="prep-summary-card"><div class="lbl">Total box</div><div class="val">${Number(d.totalBoxes||0).toLocaleString()}</div></div>
+        <div class="prep-summary-card"><div class="lbl">Total value</div><div class="val">${peso(d.totalValue||d.totalScannedValue||0)}</div></div>` : `
+        <div class="prep-summary-card"><div class="lbl">Store name</div><div class="val">${d.store}</div></div>
+        <div class="prep-summary-card"><div class="lbl">DR tracking no.</div><div class="val" style="font-size:13px;">${d.drNo||'—'}</div></div>
+        <div class="prep-summary-card"><div class="lbl">Total requested</div><div class="val">${Number(d.totalRqstd||0).toLocaleString()}</div></div>
+        <div class="prep-summary-card"><div class="lbl">Total picked</div><div class="val">${Number(d.totalPicked||0).toLocaleString()}</div></div>
+        <div class="prep-summary-card"><div class="lbl">Picked value</div><div class="val">${peso(d.totalPickedValue)}</div></div>
+        <div class="prep-summary-card"><div class="lbl">OS qty</div><div class="val">${Number(d.totalOs||0).toLocaleString()}</div></div>`;
+  const tableHead = isOutbound ? `
+        <thead><tr>
+          <th>Box Tracking No.</th><th>Reason of request</th><th>Barcode</th><th>Item name</th><th>Color</th><th>Size</th>
+          <th class="num">Qty scanned</th><th class="num">Scanned value</th><th>Final Status</th>
+        </tr></thead>` : `
+        <thead><tr>
+          <th>Reason of request</th><th>Barcode</th><th>Item name</th><th>Color</th><th>Size</th>
+          <th class="num">Qty requested</th><th class="num">Qty picked</th><th class="num">Picked value</th><th>Final Status</th>
+        </tr></thead>`;
   wrap.innerHTML=`
     <div class="prep-page-card">
       <div class="prep-page-head" style="margin-bottom:12px;align-items:flex-start;gap:12px;">
         <div>
-          <p class="page-title" style="font-size:18px;margin-bottom:2px;">Preparation details</p>
+          <p class="page-title" style="font-size:18px;margin-bottom:2px;">${isOutbound?'Outbound details':'Preparation details'}</p>
           <p class="page-sub" style="margin-bottom:0;">${d.store} · ${d.drNo||'—'} · ${fmtDisplayDate(d.dispatchDate)}</p>
         </div>
         <div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
           <div class="prep-head-stat"><span>Status of preparation</span><strong><span class="prep-status-chip ${badge}">${statusIcon(badge)} ${d.status}</span></strong></div>
-          <div class="prep-head-stat"><span>Picked value</span><strong>${peso(d.totalPickedValue)}</strong></div>
+          ${isOutbound?`<div class="prep-head-stat"><span>Total value</span><strong>${peso(d.totalValue||d.totalScannedValue||0)}</strong></div>`:`<div class="prep-head-stat"><span>Picked value</span><strong>${peso(d.totalPickedValue)}</strong></div>`}
+          ${drPrintButtons}
           <button class="btn-clear" onclick="hideCalendarPrepDetails()">Hide details</button>
         </div>
       </div>
-      <div class="prep-summary-grid">
-        <div class="prep-summary-card"><div class="lbl">Store name</div><div class="val">${d.store}</div></div>
-        <div class="prep-summary-card"><div class="lbl">Dispatch date</div><div class="val">${fmtDisplayDate(d.dispatchDate)}</div><div class="prep-date-tools" style="margin-top:8px;"><input type="date" id="prep-new-dispatch-date" value="${d.dispatchDate||''}"><button class="btn-clear" style="padding:6px 10px;font-size:11px;" onclick="updatePrepDispatchDate()">Update date</button></div></div>
-        <div class="prep-summary-card"><div class="lbl">DR tracking no.</div><div class="val" style="font-size:13px;">${d.drNo||'—'}</div></div>
-        <div class="prep-summary-card"><div class="lbl">Total Box Count</div><div class="val">${Number(d.totalBoxes||0).toLocaleString()}</div></div>
-        <div class="prep-summary-card"><div class="lbl">Total qty requested</div><div class="val">${Number(d.totalRqstd||0).toLocaleString()}</div></div>
-        <div class="prep-summary-card"><div class="lbl">Total qty picked</div><div class="val">${Number(d.totalPicked||0).toLocaleString()}</div></div>
-        <div class="prep-summary-card"><div class="lbl">OS qty</div><div class="val">${Number(d.totalOs||0).toLocaleString()}</div></div>
-        <div class="prep-summary-card"><div class="lbl">Total qty scanned</div><div class="val">${Number(d.totalScanned||0).toLocaleString()}</div></div>
-        <div class="prep-summary-card"><div class="lbl">Scanned value</div><div class="val">${peso(d.totalScannedValue)}</div></div>
-      </div>
+      <div class="prep-summary-grid">${summaryCards}</div>
       <div class="prep-tools">
         <input id="prep-q" placeholder="Search barcode, item, color..." oninput="filterPreparationRows()" style="min-width:240px;flex:1;">
         <select id="prep-status-filter" onchange="filterPreparationRows()"><option value="">All statuses</option></select>
         <button class="btn-clear" onclick="exportPreparationCSV()">↓ Export CSV</button>
       </div>
-      <div class="prep-page-table-wrap"><table>
-        <thead><tr>
-          <th>Reason of request</th><th>Barcode</th><th>Item name</th><th>Color</th><th>Size</th>
-          <th class="num">SRP</th><th class="num">Qty requested</th><th class="num">Requested value</th>
-          <th class="num">Qty picked</th><th class="num">Picked value</th><th class="num">Qty scanned</th><th class="num">Scanned value</th><th>Status</th>
-        </tr></thead>
-        <tbody id="prep-detail-body"></tbody>
-      </table></div>
+      <div class="prep-page-table-wrap"><table>${tableHead}<tbody id="prep-detail-body"></tbody></table></div>
       <p id="prep-detail-count" style="font-size:11px;color:var(--txt2);margin-top:8px;"></p>
     </div>`;
   populatePrepStatusFilter();
   renderPreparationRows(prepRowsAll);
   setTimeout(()=>wrap.scrollIntoView({behavior:'smooth',block:'start'}),50);
 }
+
 
 function updatePrepDispatchDate(){
   if(!selectedPrepData || !selectedPrepData.drNo){alert('No DR selected.');return;}
@@ -2425,24 +2436,37 @@ function renderPreparationRows(rows){
   const count=document.getElementById('prep-detail-count');
   if(count)count.textContent=`Showing ${rows.length.toLocaleString()} of ${prepRowsAll.length.toLocaleString()} rows`;
   if(!body)return;
+  const isOutbound=prepRowsAll.length && prepRowsAll[0].detailMode==='outbound';
+  if(isOutbound){
+    body.innerHTML=rows.length?rows.map(r=>`<tr>
+      <td class="mono">${r.boxTrackingNo||r.boxNo||'—'}</td><td>${r.itemRemarks||r.reason||'—'}</td><td class="mono">${r.barcode||'—'}</td><td style="font-weight:600;">${r.itemName||'—'}</td><td>${r.color||'—'}</td><td>${r.size||'—'}</td>
+      <td class="num">${Number(r.qtyScanned||0).toLocaleString()}</td><td class="num">${peso(r.scannedValue)}</td><td>${r.status||'—'}</td>
+    </tr>`).join(''):'<tr><td colspan="9" class="empty">No outbound rows found.</td></tr>';
+    return;
+  }
   body.innerHTML=rows.length?rows.map(r=>{
     const isPartialPicked=Number(r.qtyPicked||0)>0 && Number(r.qtyPicked||0)<Number(r.qtyRqstd||0);
     const rowClass=isPartialPicked?' class="prep-partial-pick-row"':'';
     const statusText=(r.status||'')+(isPartialPicked?' <span class="prep-partial-label">Partial picking</span>':'');
     return `<tr${rowClass}>
     <td>${r.reason||'—'}</td><td class="mono">${r.barcode}</td><td style="font-weight:600;">${r.itemName||'—'}</td><td>${r.color||'—'}</td><td>${r.size||'—'}</td>
-    <td class="num">${peso(r.srp)}</td><td class="num">${Number(r.qtyRqstd||0).toLocaleString()}</td><td class="num">${peso(r.requestValue)}</td>
-    <td class="num">${Number(r.qtyPicked||0).toLocaleString()}</td><td class="num">${peso(r.pickedValue)}</td><td class="num">${Number(r.qtyScanned||0).toLocaleString()}</td><td class="num">${peso(r.scannedValue)}</td><td>${statusText}</td>
+    <td class="num">${Number(r.qtyRqstd||0).toLocaleString()}</td><td class="num">${Number(r.qtyPicked||0).toLocaleString()}</td><td class="num">${peso(r.pickedValue)}</td><td>${statusText}</td>
   </tr>`;
-  }).join(''):'<tr><td colspan="13" class="empty">No rows found.</td></tr>';
+  }).join(''):'<tr><td colspan="9" class="empty">No rows found.</td></tr>';
 }
 function exportPreparationCSV(){
   if(!prepRowsAll.length)return;
-  const h=['Reason of request','Barcode','Item name','Color','Size','SRP','Qty requested','Requested value','Qty picked','Picked value','Qty scanned','Scanned value','Status'];
-  const rows=prepRowsAll.map(r=>[r.reason||'',r.barcode||'',r.itemName||'',r.color||'',r.size||'',r.srp||0,r.qtyRqstd||0,r.requestValue||0,r.qtyPicked||0,r.pickedValue||0,r.qtyScanned||0,r.scannedValue||0,r.status||'']);
+  const isOutbound=prepRowsAll[0].detailMode==='outbound';
+  const h=isOutbound
+    ? ['Box Tracking No.','Reason of request','Barcode','Item name','Color','Size','Qty scanned','Scanned value','Final Status']
+    : ['Reason of request','Barcode','Item name','Color','Size','Qty requested','Qty picked','Picked value','Final Status'];
+  const rows=isOutbound
+    ? prepRowsAll.map(r=>[r.boxTrackingNo||r.boxNo||'',r.itemRemarks||r.reason||'',r.barcode||'',r.itemName||'',r.color||'',r.size||'',r.qtyScanned||0,r.scannedValue||0,r.status||''])
+    : prepRowsAll.map(r=>[r.reason||'',r.barcode||'',r.itemName||'',r.color||'',r.size||'',r.qtyRqstd||0,r.qtyPicked||0,r.pickedValue||0,r.status||'']);
   const csv=[h,...rows].map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='preparation_details.csv';a.click();
+  const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download=isOutbound?'outbound_details.csv':'preparation_details.csv';a.click();
 }
+
 
 function clearCalContext(){
   document.getElementById('from-cal-banner').style.display='none';
@@ -4028,6 +4052,23 @@ function generateDR(){
     })
     .withFailureHandler(e=>{btn.disabled=false;btn.textContent='🧾 Print DR';alert('DR print error: '+(e&&e.message));})
     .getDeliveryReceiptPrintHtmlV104(obDrNo);
+}
+
+
+function printDRFromCalendar(drNo){
+  drNo=(drNo||'').toString().trim();
+  if(!drNo){alert('No DR Tracking No. found.');return;}
+  google.script.run
+    .withSuccessHandler(res=>{
+      if(!res.success){alert(res.msg||'Could not prepare DR print.');return;}
+      const w=window.open('', '_blank');
+      if(!w){alert('Popup was blocked. Please allow popups for this site, then click Print DR again.');return;}
+      w.document.open();
+      w.document.write(res.html||'');
+      w.document.close();
+    })
+    .withFailureHandler(e=>alert('DR print error: '+(e&&e.message||e)))
+    .getDeliveryReceiptPrintHtmlV104(drNo);
 }
 
 // ── Per-barcode scan detail popup: view / edit / delete saved scans ──────
