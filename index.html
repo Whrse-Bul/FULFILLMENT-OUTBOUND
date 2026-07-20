@@ -3565,6 +3565,8 @@ function addOBScanFromInput(){
 
 function addOBScan(barcode){
   if(!obDrNo){alert('Load a DR first.');return;}
+  const scannedBy=(document.getElementById('ob-scanner')?.value||'').trim();
+  if(!scannedBy){showOBScanMsg('⚠ Please enter Scanned By before scanning.');const el=document.getElementById('ob-scanner');if(el)el.focus();return;}
   if(!obBatchStartMs) obBatchStartMs=Date.now();
   const picked=obPickedLookup[barcode];
   if(!picked||Number(picked.qtyPicked||0)<=0){
@@ -3680,7 +3682,7 @@ function openStockTransferModal(){
   document.getElementById('modal-body').innerHTML=`
     <div class="fg" style="margin-bottom:10px;"><label>Search / scan item code</label><input id="st-search" placeholder="Scan or search item code, item name, color, box no." oninput="filterStockTransferRows()" onkeydown="if(event.key==='Enter'){event.preventDefault();addFirstStockTransferMatch();}"></div>
     <div id="st-list" class="tw" style="max-height:360px;overflow:auto;"><div class="loading">Loading Stock Transfer items...</div></div>
-    <p style="font-size:11px;color:var(--txt2);margin-top:8px;">Added items will be saved to OUTBOUND SCAN LOG Column P as <strong>Stock Transfer</strong>. They are included in DR total qty/boxes but do not affect picked-vs-scanned variance.</p>`;
+    <p style="font-size:11px;color:var(--txt2);margin-top:8px;">Added items will be saved to OUTBOUND DATA with Reason <strong>Stock Transfer</strong> and Pull Out Box Tracking No. They are included in DR total qty/boxes but do not affect picked-vs-scanned variance.</p>`;
   const okBtn=document.getElementById('modal-ok');
   okBtn.textContent='Add';
   okBtn.onclick=addStockTransferBatchFromModal;
@@ -3734,6 +3736,8 @@ function addStockTransferBatchFromModal(){
 }
 
 function addStockTransferRowObject(r,silent){
+  const scannedBy=(document.getElementById('ob-scanner')?.value||'').trim();
+  if(!scannedBy){showOBScanMsg('⚠ Please enter Scanned By before adding Stock Transfer.');const el=document.getElementById('ob-scanner');if(el)el.focus();return;}
   if(!r||!r.itemCode){if(!silent)showOBScanMsg('⚠ Stock Transfer item code is blank.');return;}
   if(!obBatchStartMs) obBatchStartMs=Date.now();
   const key='ST::'+String(r.boxNo||'')+'::'+String(r.itemCode||'');
@@ -3742,7 +3746,7 @@ function addStockTransferRowObject(r,silent){
     if(Number(obBatch[key].qty||0)>=maxQty){if(!silent)showOBScanMsg(`⚠ ${r.itemCode} already reached Stock Transfer qty (${maxQty}).`);return;}
     obBatch[key].qty=Math.min(maxQty, Number(obBatch[key].qty||0)+1);
   } else {
-    obBatch[key]={barcode:r.itemCode,itemName:r.itemName||'',color:r.color||'',size:r.size||'',qty:maxQty,source:'Stock Transfer',stockBoxNo:r.boxNo||'',stockStore:r.store||'',sourceStore:r.store||'',maxQty};
+    obBatch[key]={barcode:r.itemCode,itemName:r.itemName||'',color:r.color||'',size:r.size||'',qty:maxQty,source:'Stock Transfer',stockBoxNo:r.boxNo||'',pullOutBoxTrackingNo:r.boxNo||'',stockStore:r.store||'',sourceStore:r.store||'',maxQty};
   }
   obScanHistory.push(key);
   hideOBScanMsg();
@@ -3835,6 +3839,7 @@ function saveVmMaterialFromModal(){
     remarks:(document.getElementById('vm-remarks')?.value||'').trim()
   };
   const msg=document.getElementById('vm-save-msg');
+  if(!payload.encodedBy){if(msg)msg.textContent='Scanned By is required.';const el=document.getElementById('vm-encoded-by');if(el)el.focus();return;}
   if(!payload.itemName){if(msg)msg.textContent='Item Name is required.';return;}
   if(!payload.qty || payload.qty<=0){if(msg)msg.textContent='Qty must be greater than 0.';return;}
   const okBtn=document.getElementById('modal-ok');
@@ -3929,6 +3934,7 @@ function generateOBBox(){
   const boxNo=document.getElementById('ob-box').value.trim();
   const scannedBy=document.getElementById('ob-scanner').value.trim();
   const barcodes=Object.keys(obBatch);
+  if(!scannedBy){playOBErrorSound();alert('Please enter Scanned By before generating a box.');const el=document.getElementById('ob-scanner');if(el)el.focus();return;}
   if(!isValidBoxNo(boxNo)){alert('Dispatch Box No. must be number only: 1, 2, 3...');return;}
   if(!barcodes.length){alert('Scan at least one item first.');return;}
   for(const b of barcodes){
@@ -3946,7 +3952,7 @@ function generateOBBox(){
       return;
     }
   }
-  const rows=barcodes.map(b=>({barcode:obBatch[b].barcode,itemName:obBatch[b].itemName,color:obBatch[b].color,size:obBatch[b].size,qty:obBatch[b].qty,source:obBatch[b].source||'Store Request',reason:obBatch[b].source==='Stock Transfer'?'Stock Transfer':'',sourceStore:obBatch[b].sourceStore||obBatch[b].stockStore||'',stockStore:obBatch[b].stockStore||'',remarks:obBatch[b].remarks||''}));
+  const rows=barcodes.map(b=>({barcode:obBatch[b].barcode,itemName:obBatch[b].itemName,color:obBatch[b].color,size:obBatch[b].size,qty:obBatch[b].qty,source:obBatch[b].source||'Store Request',reason:obBatch[b].source==='Stock Transfer'?'Stock Transfer':'',sourceStore:obBatch[b].sourceStore||obBatch[b].stockStore||'',stockStore:obBatch[b].stockStore||'',stockBoxNo:obBatch[b].stockBoxNo||'',pullOutBoxTrackingNo:obBatch[b].pullOutBoxTrackingNo||obBatch[b].stockBoxNo||'',remarks:obBatch[b].remarks||''}));
   const btn=document.getElementById('ob-generate-box-btn');
   setOBGenerateLock(true);
   const startTime=new Date(obBatchStartMs||Date.now()).toISOString();
