@@ -496,6 +496,12 @@ html,body,input,select,textarea,button,table,td,th{font-family:'Google Sans','Pr
 .ob-tally-scroll tbody tr:hover td{background:#e0f017!important;color:#292f32!important;filter:none!important;}
 tr.ob-match td{background:#dff2e7!important;}
 tr.ob-mismatch td{background:#f4d9dc!important;}
+tr.ob-over td{background:#b91c1c!important;color:#fff!important;font-weight:900!important;border-top:2px solid #7f1d1d!important;border-bottom:2px solid #7f1d1d!important;}
+tr.ob-over td .ob-pending, tr.ob-over td span{color:#fff!important;}
+tr.ob-over:hover td{background:#991b1b!important;color:#fff!important;filter:none!important;box-shadow:none!important;}
+tr.ob-current-over td{background:#fee2e2!important;color:#7f1d1d!important;font-weight:800!important;border-top:2px solid #dc2626!important;border-bottom:2px solid #dc2626!important;}
+.ob-error-badge{display:inline-flex;align-items:center;border-radius:999px;background:#7f1d1d;color:#fff;font-size:9px;font-weight:900;padding:2px 6px;margin-left:6px;white-space:nowrap;}
+.ob-over-text{display:block;font-size:10px;font-weight:900;color:#fff;margin-top:2px;}
 
 
 
@@ -3517,9 +3523,11 @@ function renderOBLiveTable(){
 
   document.getElementById('ob-body').innerHTML=lines.length?lines.map(l=>{
     const isPickedLine=Number(l.qtyPicked||0)>0;
+    const isOverScan=(Number(l.liveScanned||0)>Number(l.qtyPicked||0)) && Number(l.liveScanned||0)>0;
     const ok=isPickedLine&&l.variance===0;
-    const rowClass=!isPickedLine&&l.liveScanned===0?'':(ok?'ob-match':'ob-mismatch');
+    const rowClass=isOverScan?'ob-over':(!isPickedLine&&l.liveScanned===0?'':(ok?'ob-match':'ob-mismatch'));
     const varTxt=l.variance===0?'0':(l.variance>0?'+'+l.variance:l.variance);
+    const overBadge=isOverScan?'<span class="ob-error-badge">OVER SCAN</span>':'';
     const scannedTxt=l.pendingQty>0?`${l.savedScanned} <span class="ob-pending">(+${l.pendingQty} pending)</span>`:`${l.savedScanned}`;
     let boxTxt=(l.boxes||[]).join(', ');
     if(l.pendingQty>0){
@@ -3532,7 +3540,7 @@ function renderOBLiveTable(){
       <td>${l.color||'—'}</td><td>${l.size||'—'}</td>
       <td class="num">${l.qtyPicked}</td>
       <td class="num" style="font-weight:700;">${scannedTxt}</td>
-      <td class="num" style="font-weight:700;">${varTxt}</td>
+      <td class="num" style="font-weight:700;">${varTxt}${overBadge}</td>
       <td style="font-size:11px;color:var(--txt2);">${boxTxt||'—'}</td>
       <td><button class="btn-clear" style="font-size:11px;padding:3px 9px;" onclick="openOBLineDetail('${l.barcode.replace(/'/g,"\\'")}','${(l.itemName||'').replace(/'/g,"\\'")}','${(l.color||'').replace(/'/g,"\\'")}','${(l.size||'').replace(/'/g,"\\'")}')">Detail</button></td>
     </tr>`;
@@ -3882,10 +3890,14 @@ function renderOBBatchTable(){
   tbody.innerHTML=barcodes.map(b=>{
     const it=obBatch[b];
     const notFound=it.itemName==='NOT FOUND'||it.itemName==='Lookup failed';
+    const picked=obPickedLookup[b];
+    const isRegular=it.source!=='Stock Transfer' && it.source!=='VM MATERIAL';
+    const isOver=isRegular && picked && (Number(picked.savedScanned||0)+Number(it.qty||0)>Number(picked.qtyPicked||0));
+    const overNote=isOver?` <span class="ob-error-badge">OVER SCAN</span>`:'';
     const esc=b.replace(/'/g,"\\'");
-    return `<tr>
+    return `<tr class="${isOver?'ob-current-over':''}">
       <td class="mono">${it.barcode}</td>
-      <td style="font-weight:500;${notFound?'color:var(--red);font-style:italic;':''}">${it.itemName}${it.source==='Stock Transfer'?' <span class="pill p-blue" style="font-size:9px;margin-left:5px;">Stock Transfer</span>':(it.source==='VM MATERIAL'?' <span class="pill p-blue" style="font-size:9px;margin-left:5px;">VM MATERIAL</span>':'')}</td>
+      <td style="font-weight:500;${notFound?'color:var(--red);font-style:italic;':''}">${it.itemName}${it.source==='Stock Transfer'?' <span class="pill p-blue" style="font-size:9px;margin-left:5px;">Stock Transfer</span>':(it.source==='VM MATERIAL'?' <span class="pill p-blue" style="font-size:9px;margin-left:5px;">VM MATERIAL</span>':'')}${overNote}</td>
       <td>${it.color||'—'}</td><td>${it.size||'—'}</td>
       <td class="num"><input type="number" min="0" value="${it.qty}" style="width:55px;padding:4px 6px;border:1px solid var(--bdr);border-radius:6px;text-align:center;" onchange="setOBScanQty('${esc}', this.value)"></td>
       <td><button class="del-row" onclick="removeOBScan('${esc}')" title="Delete row">🗑</button></td>
@@ -3949,26 +3961,32 @@ function generateOBBox(){
   if(!scannedBy){playOBErrorSound();alert('Please enter Scanned By before generating a box.');const el=document.getElementById('ob-scanner');if(el)el.focus();return;}
   if(!isValidBoxNo(boxNo)){alert('Dispatch Box No. must be number only: 1, 2, 3...');return;}
   if(!barcodes.length){alert('Scan at least one item first.');return;}
+  const qtyErrors=[];
   for(const b of barcodes){
     if(obBatch[b] && obBatch[b].source==='Stock Transfer') continue;
     const picked=obPickedLookup[b];
-    if(!picked||Number(picked.qtyPicked||0)<=0){
-      playOBErrorSound();
-      showOBScanMsg('⚠ Please check the qty of the item with error.');
-      alert('Please check the qty of the item with error');
-      renderOBLiveTable();
-      return;
-    }
     const addQty=Number(obBatch[b].qty||0);
-    const saved=Number(picked.savedScanned||0);
-    const needed=Number(picked.qtyPicked||0);
-    if(saved+addQty>needed){
-      playOBErrorSound();
-      showOBScanMsg('⚠ Please check the qty of the item with error.');
-      alert('Please check the qty of the item with error');
-      renderOBLiveTable();
-      return;
+    const saved=Number(picked&&picked.savedScanned||0);
+    const needed=Number(picked&&picked.qtyPicked||0);
+    const itemName=(obBatch[b]&&obBatch[b].itemName)||(picked&&picked.itemName)||'';
+    if(!picked||needed<=0){
+      qtyErrors.push({barcode:b,itemName:itemName||'Item not in picked list',picked:0,scanned:saved+addQty,excess:saved+addQty});
+      continue;
     }
+    if(saved+addQty>needed){
+      qtyErrors.push({barcode:b,itemName:itemName||'',picked:needed,scanned:saved+addQty,excess:(saved+addQty)-needed});
+    }
+  }
+  if(qtyErrors.length){
+    playOBErrorSound();
+    const detail=qtyErrors.slice(0,3).map((e,i)=>`${qtyErrors.length>1?(i+1)+'. ':''}${e.barcode} - ${e.itemName || 'Item'} | Picked: ${e.picked} | Scanned: ${e.scanned} | Excess: ${e.excess}`).join('\n');
+    const more=qtyErrors.length>3?`\n+${qtyErrors.length-3} more item(s) with error`:'';
+    const msg=`Please check the qty of item with error:\n${detail}${more}`;
+    showOBScanMsg('⚠ '+msg.replace(/\n/g,' • '));
+    alert(msg);
+    renderOBLiveTable();
+    renderOBBatchTable();
+    return;
   }
   const rows=barcodes.map(b=>({barcode:obBatch[b].barcode,itemName:obBatch[b].itemName,color:obBatch[b].color,size:obBatch[b].size,qty:obBatch[b].qty,source:obBatch[b].source||'Store Request',reason:obBatch[b].source==='Stock Transfer'?'Stock Transfer':'',sourceStore:obBatch[b].sourceStore||obBatch[b].stockStore||'',stockStore:obBatch[b].stockStore||'',stockBoxNo:obBatch[b].stockBoxNo||'',pullOutBoxTrackingNo:obBatch[b].pullOutBoxTrackingNo||obBatch[b].stockBoxNo||'',remarks:obBatch[b].remarks||''}));
   const btn=document.getElementById('ob-generate-box-btn');
