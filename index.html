@@ -3597,15 +3597,8 @@ function addOBScan(barcode){
     showOBScanMsg(`⚠ ${barcode} has no Qty Picked for this DR yet. Only items with Qty Picked > 0 can be scanningned.`);
     return;
   }
-  const savedScanned=Number(picked.savedScanned||0);
-  const currentBatchQty=obBatch[barcode]?Number(obBatch[barcode].qty||0):0;
-
-  // Block once this barcode's picked qty has already been met (saved + pending).
-  // This allows partial DR scanning as long as the barcode has Qty Picked value.
-  if((savedScanned+currentBatchQty)>=Number(picked.qtyPicked||0)){
-    showOBScanMsg(`⚠ ${barcode} already fully scanned (${savedScanned+currentBatchQty}/${picked.qtyPicked}). Scan blocked.`);
-    return;
-  }
+  // V115: allow scan even when current qty goes beyond picked qty.
+  // Over-qty will be highlighted in the tally and blocked only when Generate Box is clicked.
   hideOBScanMsg();
 
   if(obBatch[barcode]){
@@ -3653,13 +3646,8 @@ function setOBScanQty(barcode,value){
         showOBScanMsg(`⚠ Qty adjusted. ${obBatch[barcode].barcode} can only add ${maxAllowed} Stock Transfer unit(s).`);
       } else obBatch[barcode].qty=n;
     } else {
-      const picked=obPickedLookup[barcode];
-      const saved=picked?Number(picked.savedScanned||0):0;
-      const maxAllowed=picked?Math.max(0,Number(picked.qtyPicked||0)-saved):n;
-      if(n>maxAllowed){
-        obBatch[barcode].qty=maxAllowed;
-        showOBScanMsg(`⚠ Qty adjusted. ${barcode} can only add ${maxAllowed} more unit(s).`);
-      } else obBatch[barcode].qty=n;
+      // V115: do not auto-adjust regular scan qty. Allow encoder to see the over-qty error in the tally; block only on Generate Box.
+      obBatch[barcode].qty=n;
     }
   }
   if(!Object.keys(obBatch).length) obBatchStartMs=null;
@@ -3965,14 +3953,20 @@ function generateOBBox(){
     if(obBatch[b] && obBatch[b].source==='Stock Transfer') continue;
     const picked=obPickedLookup[b];
     if(!picked||Number(picked.qtyPicked||0)<=0){
-      alert(b+' has no Qty Picked for this DR yet. Remove it from the current box before Generate Box.');
+      playOBErrorSound();
+      showOBScanMsg('⚠ Please check the qty of the item with error.');
+      alert('Please check the qty of the item with error');
+      renderOBLiveTable();
       return;
     }
     const addQty=Number(obBatch[b].qty||0);
     const saved=Number(picked.savedScanned||0);
     const needed=Number(picked.qtyPicked||0);
     if(saved+addQty>needed){
-      alert(b+' will exceed Qty Picked. Already scanned '+saved+'/'+needed+', trying to add '+addQty+'.');
+      playOBErrorSound();
+      showOBScanMsg('⚠ Please check the qty of the item with error.');
+      alert('Please check the qty of the item with error');
+      renderOBLiveTable();
       return;
     }
   }
